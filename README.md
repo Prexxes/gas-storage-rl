@@ -1,0 +1,95 @@
+# Gas Storage RL
+
+This repository evaluates PPO, SAC, and TD3 for natural gas storage asset valuation on synthetic spot-price environments with increasing complexity. It is designed for a bachelor thesis comparison of performance, stability across seeds, and sample efficiency.
+
+## Environments
+
+The MVP uses three Gymnasium-compatible settings:
+
+- Deterministic seasonal: `log_price_t = seasonal_log_price_t`
+- Seasonal OU: `log_price_t = seasonal_log_price_t + ou_residual_t`
+- Seasonal OU jump/stress: `log_price_t = seasonal_log_price_t + ou_residual_t + jump_component_t`
+
+Prices are generated as `price_t = exp(log_price_t)` and are strictly positive. Train, validation, and test paths are generated from deterministic, disjoint seeds. Deterministic environments repeat the same seasonal path through the same dataset interface.
+
+Generated price datasets are cached by default under `data/cache/{dataset_hash}/` as `train.npy`, `validation.npy`, `test.npy`, and `metadata.json`. The hash depends on the environment name, path counts, episode length, dataset seed, and price-process parameters. Set `dataset_config.force_regenerate: true` to overwrite an existing matching cache.
+
+## Storage Dynamics
+
+The storage level satisfies `0 <= v_t <= C`. The continuous action space is `Box(-1, 1, shape=(1,))`, where positive actions inject gas and negative actions withdraw gas. Executed actions are clipped by injection and withdrawal rates and by storage boundaries. The MVP uses efficiency `1`, transaction costs `0`, leakage `0`, and no volume-dependent rates.
+
+## Observation Space
+
+Observations are `np.float32` vectors:
+
+```text
+[storage_level / capacity, price / price_scale, current_step / (episode_length - 1)]
+```
+
+The MVP intentionally does not include M+1 futures features.
+
+## Reward
+
+The raw cashflow is computed from the executed action:
+
+```text
+raw_cashflow_t = -executed_action_t * price_t
+```
+
+Buying gas is negative cashflow and selling gas is positive cashflow. At the final step a terminal inventory penalty is applied:
+
+```text
+terminal_penalty = -penalty_factor * mean_training_price * abs(v_T - target_inventory)
+scaled_reward = raw_reward / reward_scale
+```
+
+The environment returns scaled rewards to RL algorithms and logs raw and scaled values in `info`.
+
+## Benchmarks
+
+Implemented benchmarks are:
+
+- `RandomPolicy`: samples uniformly from `[-1, 1]`.
+- `RuleBasedPolicy`: buys below the 30 percent training quantile, sells above the 70 percent quantile, and enforces safe liquidation near maturity.
+- `LSMCBenchmark`: Least-Squares Monte Carlo with action grid `[-1, 0, 1]` and polynomial continuation features.
+- `PerfectForesightBaseline`: deterministic upper bound solved with `scipy.optimize.linprog`.
+
+## Algorithms
+
+PPO, SAC, and TD3 are created through Stable-Baselines3. RL Baselines3 Zoo may be used as a reference for implementation details and hyperparameters, but the core framework is this repository.
+
+## Commands
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run tests:
+
+```bash
+PYTHONPATH=src pytest -q
+```
+
+Run a debug experiment:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment --config configs/debug.yaml --algorithm ppo
+```
+
+Each run writes `config.json`, `metadata.json`, `metrics.csv`, `evaluations.csv`, `final_summary.json`, `final_model.zip`, and SB3 internal logs under `sb3_logs/`. The training callback logs completed training episodes to `metrics.csv`, runs periodic validation according to `training_config.eval_freq`, and saves `best_validation_model.zip`.
+
+Run benchmarks:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml
+```
+
+Plotting helpers live in `gas_storage_rl.plotting` and return Matplotlib figures for price paths, action paths, storage levels, cumulative cashflows, price-action scatter, learning curves, and return distributions.
+
+Create plots for a saved run:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_run --run-dir runs/<run_id> --split validation --path-id 0
+```

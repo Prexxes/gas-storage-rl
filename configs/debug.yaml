@@ -1,0 +1,75 @@
+environment_config:
+  environment_name: deterministic
+  capacity: 30
+  episode_length: 8
+  injection_rate: 1.0
+  withdrawal_rate: 1.0
+  initial_inventory: 0.0
+  target_terminal_inventory: 0.0
+  price_scale: 50.0
+  reward_scale: 50.0
+  penalty_factor: 0.5
+  efficiency: 1.0
+  transaction_cost: 0.0
+  leakage: 0.0
+dataset_config:
+  n_train_paths: 8
+  n_validation_paths: 4
+  n_test_paths: 4
+  cache_dir: data/cache
+  use_cache: true
+  force_regenerate: false
+training_config:
+  total_timesteps: 16
+  eval_freq: 8
+  n_seeds: 1
+evaluation_config:
+  deterministic: true
+  lsmc_action_grid: [-1.0, 0.0, 1.0]
+plotting_config:
+  plot_split: validation
+  plot_n_paths: 4
+seeds:
+  master_seed: 1
+  dataset_seed: 11
+  env_seed: 12
+  agent_seed: 13
+  eval_seed: 14
+  plot_seed: 15
+price_process_config:
+  base_price: 50.0
+  seasonal_amplitude: 0.25
+  seasonal_phase: 0.0
+  ou_mean_reversion: 0.08
+  ou_volatility: 0.12
+  jump_probability: 0.02
+  jump_mean: 0.0
+  jump_std: 0.35
+  stress_probability: 0.005
+  stress_multiplier: 1.5
+agent_config:
+  ppo:
+    policy: MlpPolicy
+    device: cpu
+    gamma: 1.0
+    n_steps: 8
+    batch_size: 4
+    n_epochs: 1
+  sac:
+    policy: MlpPolicy
+    device: cpu
+    learning_starts: 1
+    batch_size: 4
+    train_freq: 1
+    gradient_steps: 1
+    buffer_size: 100
+  td3:
+    policy: MlpPolicy
+    device: cpu
+    learning_starts: 1
+    batch_size: 4
+    train_freq: 1
+    gradient_steps: 1
+    buffer_size: 100
+logging_config:
+  run_dir: runs
