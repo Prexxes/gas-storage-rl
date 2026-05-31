@@ -3,6 +3,9 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/data/cache" />
+      <excludeFolder url="file://$MODULE_DIR$/runs" />
     </content>
     <orderEntry type="jdk" jdkName="/home/tobia/miniforge3/envs/gas-storage-rl WSL (Ubuntu): (null)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

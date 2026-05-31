@@ -14,6 +14,20 @@ Prices are generated as `price_t = exp(log_price_t)` and are strictly positive. 
 
 Generated price datasets are cached by default under `data/cache/{dataset_hash}/` as `train.npy`, `validation.npy`, `test.npy`, and `metadata.json`. The hash depends on the environment name, path counts, episode length, dataset seed, and price-process parameters. Set `dataset_config.force_regenerate: true` to overwrite an existing matching cache.
 
+## Historical Calibration Pipeline
+
+The repository can also calibrate synthetic prices from prepared historical CSVs while keeping calibration and backtesting chronologically separate. Monthly calibration data up to and including `2024-12-31` is used to estimate a log-seasonal calendar-month component. Daily calibration data up to the same cutoff is deseasonalized into log residuals, then used to fit an AR(1)/OU residual process and a simple jump component from large AR(1) innovations.
+
+Held-out historical backtesting starts at `2025-01-01`. Those backtest prices are never used for seasonality, residual, OU, or jump calibration. They are only converted into separate rolling-window episodes.
+
+Build calibrated synthetic train/validation/test paths and historical backtest windows:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.data.build_historical_datasets --config configs/historical_debug.yaml
+```
+
+The synthetic splits are stored under `data/cache/{dataset_hash}/`. Historical backtest windows are stored separately under `data/cache/backtest/{dataset_hash}/` as `backtest.npy` plus metadata with each episode start and end date.
+
 ## Storage Dynamics
 
 The storage level satisfies `0 <= v_t <= C`. The continuous action space is `Box(-1, 1, shape=(1,))`, where positive actions inject gas and negative actions withdraw gas. Executed actions are clipped by injection and withdrawal rates and by storage boundaries. The MVP uses efficiency `1`, transaction costs `0`, leakage `0`, and no volume-dependent rates.

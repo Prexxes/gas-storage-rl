@@ -9,7 +9,35 @@ log_price_t = seasonal_log_price_t + ou_residual_t + jump_component_t
 price_t = exp(log_price_t)
 ```
 
-The deterministic environment sets both stochastic terms to zero. The OU environment includes a mean-reverting residual. The jump environment adds sparse regular jumps and larger stress jumps. Historical calibration is intentionally out of scope for the MVP; configurable fallback parameters define the synthetic processes.
+The deterministic environment sets both stochastic terms to zero. The OU environment includes a mean-reverting residual. The jump environment adds sparse regular jumps and larger stress jumps. Configurable fallback parameters define the default synthetic processes.
+
+## Historical Calibration
+
+The historical pipeline enforces a chronological split. Calibration inputs must end on or before `2024-12-31`; historical backtest inputs must start on or after `2025-01-01`. Backtest observations are never used to estimate the synthetic data-generating process.
+
+Monthly calibration prices estimate a calendar-month log seasonality:
+
+```text
+s_m = mean(log(monthly_price) - mean(log(monthly_price)) | month = m)
+```
+
+The monthly adjustments are normalized to zero mean. Daily calibration prices are converted to residuals:
+
+```text
+r_t = log(daily_price_t) - mean_log_price - s_month(t)
+```
+
+The centered residuals fit a discrete AR(1) process:
+
+```text
+r_t = phi r_{t-1} + epsilon_t
+mean_reversion = 1 - phi
+volatility = std(epsilon_t without classified jumps)
+```
+
+Large innovations, identified by a configurable robust sigma threshold, define the simple jump component. The calibrated synthetic generator then combines the monthly log seasonality, AR(1) residuals, and sparse additive log jumps. Train, validation, and test paths are generated from deterministic disjoint seeds and cached independently from historical backtest windows.
+
+Historical backtest episodes are rolling windows over the held-out backtest CSV. Their cache metadata stores the start and end date of every window so evaluations remain traceable to the original historical period.
 
 ## Storage Dynamics
 
