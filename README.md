@@ -98,7 +98,19 @@ Run a debug experiment:
 PYTHONPATH=src python -m gas_storage_rl.training.run_experiment --config configs/debug.yaml --algorithm ppo
 ```
 
-Each run writes `config.json`, `metadata.json`, `metrics.csv`, `evaluations.csv`, `final_summary.json`, `final_model.zip`, and SB3 internal logs under `sb3_logs/`. The training callback logs completed training episodes to `metrics.csv`, runs periodic validation according to `training_config.eval_freq`, and saves `best_validation_model.zip`.
+Each run writes `config.json`, `metadata.json`, `metrics.csv`, `evaluations.csv`, `final_summary.json`, `final_model.zip`, and SB3 internal logs under `sb3_logs/`. The training callback logs completed training episodes to `metrics.csv`, runs periodic validation according to `training_config.eval_freq`, and saves `best_validation_model.zip`. The training command does not evaluate the test split or historical backtest split; those holdout evaluations are run manually after model selection.
+
+Run manual holdout evaluation on the synthetic test split:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_holdout_evaluation --run-dir runs/<run_id> --split test
+```
+
+Run manual holdout evaluation on historical backtest windows:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_holdout_evaluation --run-dir runs/<run_id> --split backtest
+```
 
 Run benchmarks:
 

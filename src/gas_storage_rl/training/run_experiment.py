@@ -26,7 +26,6 @@ def main() -> None:
     dataset, storage_params, env_kwargs = build_environment(config)
     train_env = GasStorageEnv(dataset, "train", storage_params, **env_kwargs)
     eval_env = GasStorageEnv(dataset, "validation", storage_params, **env_kwargs)
-    test_env = GasStorageEnv(dataset, "test", storage_params, **env_kwargs)
     logger = ExperimentLogger(config["logging_config"]["run_dir"], config)
     logger.write_json("metadata.json", logger.metadata())
 
@@ -59,22 +58,13 @@ def main() -> None:
         deterministic=True,
         total_training_env_steps=total_timesteps,
     )
-    test_metrics, _ = evaluate_policy_on_paths(
-        test_env,
-        model,
-        deterministic=True,
-        total_training_env_steps=total_timesteps,
-    )
     eval_wall_time = time.time() - eval_started
     validation_metrics["algorithm_name"] = args.algorithm
-    test_metrics["algorithm_name"] = args.algorithm
     if callback.last_validation_step != total_timesteps:
         logger.append_csv("evaluations.csv", validation_metrics)
-    logger.append_csv("evaluations.csv", test_metrics)
     summary = {
         "algorithm_name": args.algorithm,
         "validation": validation_metrics,
-        "test": test_metrics,
         "train_wall_time_s": train_wall_time,
         "eval_wall_time_s": eval_wall_time,
         "total_wall_time_s": time.time() - started,
