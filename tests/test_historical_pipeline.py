@@ -12,7 +12,10 @@ from gas_storage_rl.data.path_dataset import (
     load_or_generate_historical_backtest_dataset,
 )
 from gas_storage_rl.prices.calibration import calibrate_historical_price_process
-from gas_storage_rl.prices.generators import generate_price_paths
+from gas_storage_rl.prices.generators import (
+    calibrated_monthly_log_curve,
+    generate_price_paths,
+)
 from gas_storage_rl.prices.historical_data import load_historical_price_csv
 from gas_storage_rl.prices.seasonal import fit_monthly_log_seasonality
 
@@ -128,6 +131,27 @@ def test_historical_environment_variants_use_calibrated_components(tmp_path) -> 
     assert not np.allclose(ou_paths[0], ou_paths[1])
     assert np.all(jump_paths > 0.0)
     assert not np.allclose(jump_paths, ou_paths)
+
+
+def test_historical_seasonality_uses_smooth_fourier_curve_by_default() -> None:
+    """Fourier seasonality avoids hard monthly jumps in daily curves."""
+    monthly_adjustments = [0.5, -0.5, 0.2, 0.1, 0.0, -0.1, -0.2, 0.1, 0.2, 0.0, -0.1, -0.2]
+
+    step_curve = calibrated_monthly_log_curve(
+        episode_length=40,
+        base_log_price=0.0,
+        monthly_log_seasonality=monthly_adjustments,
+        method="step",
+    )
+    fourier_curve = calibrated_monthly_log_curve(
+        episode_length=40,
+        base_log_price=0.0,
+        monthly_log_seasonality=monthly_adjustments,
+    )
+
+    step_month_change = abs(step_curve[31] - step_curve[30])
+    fourier_month_change = abs(fourier_curve[31] - fourier_curve[30])
+    assert fourier_month_change < step_month_change
 
 
 def test_historical_backtest_windows_respect_start_date_and_cache(tmp_path) -> None:

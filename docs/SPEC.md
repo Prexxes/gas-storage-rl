@@ -21,7 +21,11 @@ Monthly calibration prices estimate a calendar-month log seasonality:
 s_m = mean(log(monthly_price) - mean(log(monthly_price)) | month = m)
 ```
 
-The monthly adjustments are normalized to zero mean. Daily calibration prices are converted to residuals:
+The monthly adjustments are normalized to zero mean. For daily evaluation, the
+default historical pipeline fits a smooth periodic Fourier curve to the twelve
+monthly adjustments. This keeps the monthly calibration interpretation while
+removing artificial step changes at month boundaries. Daily calibration prices
+are converted to residuals:
 
 ```text
 r_t = log(daily_price_t) - mean_log_price - s_month(t)

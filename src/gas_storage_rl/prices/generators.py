@@ -11,7 +11,10 @@ import pandas as pd
 from gas_storage_rl.prices.calibration import default_price_parameters
 from gas_storage_rl.prices.jump_process import simulate_jump_component
 from gas_storage_rl.prices.ou_process import simulate_ou_residuals
-from gas_storage_rl.prices.seasonal import seasonal_log_curve
+from gas_storage_rl.prices.seasonal import (
+    evaluate_fourier_monthly_seasonality,
+    seasonal_log_curve,
+)
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,8 @@ def generate_calibrated_price_paths(
         episode_length=episode_length,
         base_log_price=float(params["base_log_price"]),
         monthly_log_seasonality=params["monthly_log_seasonality"],
+        method=str(params.get("seasonality_interpolation", "fourier")),
+        fourier_harmonics=int(params.get("seasonality_fourier_harmonics", 2)),
     )
     residuals = np.zeros((n_paths, episode_length), dtype=np.float64)
     if include_ou:
@@ -161,13 +166,23 @@ def calibrated_monthly_log_curve(
     base_log_price: float,
     monthly_log_seasonality: list[float] | tuple[float, ...],
     start_date: str = "2001-01-01",
+    method: str = "fourier",
+    fourier_harmonics: int = 2,
 ) -> np.ndarray:
     """Creates a daily log seasonal curve from calibrated monthly values."""
     if len(monthly_log_seasonality) != 12:
         raise ValueError("monthly_log_seasonality must contain exactly 12 values")
     dates = pd.date_range(start=start_date, periods=episode_length, freq="D")
     adjustments = np.asarray(monthly_log_seasonality, dtype=np.float64)
-    return base_log_price + adjustments[dates.month.to_numpy() - 1]
+    if method == "step":
+        return base_log_price + adjustments[dates.month.to_numpy() - 1]
+    if method != "fourier":
+        raise ValueError(f"Unknown seasonality method: {method}")
+    return base_log_price + evaluate_fourier_monthly_seasonality(
+        dates,
+        adjustments,
+        harmonics=fourier_harmonics,
+    )
 
 
 def _simulate_ar1_residuals(

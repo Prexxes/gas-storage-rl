@@ -44,11 +44,34 @@ class MonthlySeasonality:
         if len(self.monthly_log_adjustments) != 12:
             raise ValueError("monthly_log_adjustments must contain exactly 12 values")
 
-    def log_curve_for_dates(self, dates: pd.Series | pd.DatetimeIndex) -> np.ndarray:
-        """Returns seasonal log-prices for the provided dates."""
-        months = pd.DatetimeIndex(dates).month.to_numpy()
+    def log_curve_for_dates(
+        self,
+        dates: pd.Series | pd.DatetimeIndex,
+        method: str = "fourier",
+        fourier_harmonics: int = 2,
+    ) -> np.ndarray:
+        """Returns seasonal log-prices for the provided dates.
+
+        Args:
+            dates: Dates at which to evaluate the seasonal curve.
+            method: Either ``fourier`` for a smooth periodic curve or ``step``
+                for calendar-month constants.
+            fourier_harmonics: Number of Fourier harmonics used for smoothing.
+
+        Returns:
+            Seasonal log-price array with one value per input date.
+        """
         adjustments = np.asarray(self.monthly_log_adjustments, dtype=np.float64)
-        return self.base_log_price + adjustments[months - 1]
+        if method == "step":
+            months = pd.DatetimeIndex(dates).month.to_numpy()
+            return self.base_log_price + adjustments[months - 1]
+        if method != "fourier":
+            raise ValueError(f"Unknown seasonality method: {method}")
+        return self.base_log_price + evaluate_fourier_monthly_seasonality(
+            dates,
+            adjustments,
+            harmonics=fourier_harmonics,
+        )
 
     def as_params(self) -> dict[str, float | list[float]]:
         """Serializes the seasonality for config metadata."""
@@ -58,6 +81,8 @@ class MonthlySeasonality:
             "monthly_log_seasonality": [
                 float(value) for value in self.monthly_log_adjustments
             ],
+            "seasonality_interpolation": "fourier",
+            "seasonality_fourier_harmonics": 2,
         }
 
 
@@ -90,3 +115,49 @@ def fit_monthly_log_seasonality(
         base_log_price=base_log_price,
         monthly_log_adjustments=tuple(values),
     )
+
+
+def evaluate_fourier_monthly_seasonality(
+    dates: pd.Series | pd.DatetimeIndex,
+    monthly_log_adjustments: np.ndarray,
+    harmonics: int = 2,
+) -> np.ndarray:
+    """Evaluates a smooth periodic Fourier curve fitted to monthly values.
+
+    Args:
+        dates: Dates at which to evaluate the seasonal adjustment.
+        monthly_log_adjustments: Twelve zero-mean monthly log adjustments.
+        harmonics: Number of sine/cosine harmonics.
+
+    Returns:
+        Smooth daily seasonal log adjustments.
+    """
+    if len(monthly_log_adjustments) != 12:
+        raise ValueError("monthly_log_adjustments must contain exactly 12 values")
+    if harmonics < 1:
+        raise ValueError("harmonics must be positive")
+    fitted_harmonics = min(int(harmonics), 5)
+    month_midpoints = np.asarray(
+        [15, 45, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349],
+        dtype=np.float64,
+    )
+    coefficients = np.linalg.lstsq(
+        _fourier_design(month_midpoints / 365.0, fitted_harmonics),
+        monthly_log_adjustments,
+        rcond=None,
+    )[0]
+    date_index = pd.DatetimeIndex(dates)
+    year_lengths = np.where(date_index.is_leap_year, 366.0, 365.0)
+    fractions = (date_index.dayofyear.to_numpy(dtype=np.float64) - 0.5) / year_lengths
+    values = _fourier_design(fractions, fitted_harmonics) @ coefficients
+    return values - np.mean(values)
+
+
+def _fourier_design(fractions: np.ndarray, harmonics: int) -> np.ndarray:
+    """Builds a Fourier design matrix for annual fractions."""
+    columns = [np.ones_like(fractions, dtype=np.float64)]
+    for harmonic in range(1, harmonics + 1):
+        angle = 2.0 * np.pi * harmonic * fractions
+        columns.append(np.sin(angle))
+        columns.append(np.cos(angle))
+    return np.column_stack(columns)

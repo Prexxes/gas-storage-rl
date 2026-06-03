@@ -16,7 +16,7 @@ Generated price datasets are cached by default under `data/cache/{dataset_hash}/
 
 ## Historical Calibration Pipeline
 
-The repository can also calibrate synthetic prices from prepared historical CSVs while keeping calibration and backtesting chronologically separate. Monthly calibration data up to and including `2024-12-31` is used to estimate a log-seasonal calendar-month component. Daily calibration data up to the same cutoff is deseasonalized into log residuals, then used to fit an AR(1)/OU residual process and a simple jump component from large AR(1) innovations.
+The repository can also calibrate synthetic prices from prepared historical CSVs while keeping calibration and backtesting chronologically separate. Monthly calibration data up to and including `2024-12-31` is used to estimate a log-seasonal calendar-month component. The twelve monthly seasonal values are evaluated as a smooth periodic Fourier curve for daily paths, avoiding hard jumps at month boundaries. Daily calibration data up to the same cutoff is deseasonalized into log residuals, then used to fit an AR(1)/OU residual process and a simple jump component from large AR(1) innovations.
 
 Held-out historical backtesting starts at `2025-01-01`. Those backtest prices are never used for seasonality, residual, OU, or jump calibration. They are only converted into separate rolling-window episodes.
 
