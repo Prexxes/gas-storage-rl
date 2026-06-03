@@ -95,6 +95,41 @@ def test_calibrated_generator_produces_positive_splits(tmp_path) -> None:
     )
 
 
+def test_historical_environment_variants_use_calibrated_components(tmp_path) -> None:
+    """Historical environment names compose seasonality, OU noise, and jumps."""
+    monthly_csv = _write_monthly_csv(tmp_path)
+    daily_csv = _write_daily_calibration_csv(tmp_path)
+    calibration = calibrate_historical_price_process(monthly_csv, daily_csv)
+    params = calibration.to_price_params()
+
+    deterministic = generate_price_paths(
+        "historical_deterministic",
+        n_paths=3,
+        episode_length=20,
+        seed=7,
+        params=params,
+    )
+    ou_paths = generate_price_paths(
+        "historical_ou",
+        n_paths=3,
+        episode_length=20,
+        seed=7,
+        params=params,
+    )
+    jump_paths = generate_price_paths(
+        "historical_jump",
+        n_paths=3,
+        episode_length=20,
+        seed=7,
+        params={**params, "jump_probability": 1.0, "jump_mean": 0.2, "jump_std": 0.0},
+    )
+
+    assert np.allclose(deterministic[0], deterministic[1])
+    assert not np.allclose(ou_paths[0], ou_paths[1])
+    assert np.all(jump_paths > 0.0)
+    assert not np.allclose(jump_paths, ou_paths)
+
+
 def test_historical_backtest_windows_respect_start_date_and_cache(tmp_path) -> None:
     """Backtest windows are generated separately from held-out dates."""
     csv_path = tmp_path / "backtest.csv"

@@ -28,6 +28,12 @@ PYTHONPATH=src python -m gas_storage_rl.data.build_historical_datasets --config 
 
 The synthetic splits are stored under `data/cache/{dataset_hash}/`. Historical backtest windows are stored separately under `data/cache/backtest/{dataset_hash}/` as `backtest.npy` plus metadata with each episode start and end date.
 
+Historically calibrated synthetic paths support three environment variants:
+
+- `historical_deterministic`: calibrated monthly log seasonality only
+- `historical_ou`: calibrated seasonality plus AR(1)/OU residual noise
+- `historical_jump`: calibrated seasonality plus AR(1)/OU residual noise and jumps
+
 ## Storage Dynamics
 
 The storage level satisfies `0 <= v_t <= C`. The continuous action space is `Box(-1, 1, shape=(1,))`, where positive actions inject gas and negative actions withdraw gas. Executed actions are clipped by injection and withdrawal rates and by storage boundaries. The MVP uses efficiency `1`, transaction costs `0`, leakage `0`, and no volume-dependent rates.

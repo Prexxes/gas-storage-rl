@@ -37,7 +37,9 @@ def generate_price_paths(
     """Generates strictly positive synthetic spot price paths.
 
     Args:
-        environment_name: One of ``deterministic``, ``ou``, or ``jump``.
+        environment_name: One of ``deterministic``, ``ou``, ``jump``,
+            ``historical_deterministic``, ``historical_ou``,
+            ``historical_jump``, or ``historical_calibrated``.
         n_paths: Number of paths.
         episode_length: Number of days.
         seed: Random seed.
@@ -50,12 +52,22 @@ def generate_price_paths(
     if params:
         process_params.update(params)
 
-    if environment_name == "historical_calibrated":
+    historical_environment_names = {
+        "historical_deterministic",
+        "historical_ou",
+        "historical_jump",
+        "historical_calibrated",
+    }
+    if environment_name in historical_environment_names:
         return generate_calibrated_price_paths(
             n_paths=n_paths,
             episode_length=episode_length,
             seed=seed,
             params=process_params,
+            include_ou=environment_name
+            in {"historical_ou", "historical_jump", "historical_calibrated"},
+            include_jumps=environment_name
+            in {"historical_jump", "historical_calibrated"},
         )
 
     seasonal = seasonal_log_curve(
@@ -97,6 +109,8 @@ def generate_calibrated_price_paths(
     episode_length: int,
     seed: int,
     params: dict[str, Any],
+    include_ou: bool = True,
+    include_jumps: bool = True,
 ) -> np.ndarray:
     """Generates paths from calibrated monthly seasonality, AR(1), and jumps.
 
@@ -105,6 +119,8 @@ def generate_calibrated_price_paths(
         episode_length: Number of days.
         seed: Random seed.
         params: Calibrated price process parameters.
+        include_ou: Whether to add calibrated AR(1)/OU residual noise.
+        include_jumps: Whether to add calibrated sparse jumps.
 
     Returns:
         Positive price matrix with shape ``(n_paths, episode_length)``.
@@ -115,21 +131,27 @@ def generate_calibrated_price_paths(
         base_log_price=float(params["base_log_price"]),
         monthly_log_seasonality=params["monthly_log_seasonality"],
     )
-    residuals = _simulate_ar1_residuals(
-        n_paths=n_paths,
-        episode_length=episode_length,
-        phi=float(params.get("ar1_phi", 1.0 - params.get("ou_mean_reversion", 0.0))),
-        volatility=float(params.get("ou_volatility", 0.0)),
-        rng=rng,
-    )
-    jumps = _simulate_calibrated_jumps(
-        n_paths=n_paths,
-        episode_length=episode_length,
-        jump_probability=float(params.get("jump_probability", 0.0)),
-        jump_mean=float(params.get("jump_mean", 0.0)),
-        jump_std=float(params.get("jump_std", 0.0)),
-        rng=rng,
-    )
+    residuals = np.zeros((n_paths, episode_length), dtype=np.float64)
+    if include_ou:
+        residuals = _simulate_ar1_residuals(
+            n_paths=n_paths,
+            episode_length=episode_length,
+            phi=float(
+                params.get("ar1_phi", 1.0 - params.get("ou_mean_reversion", 0.0))
+            ),
+            volatility=float(params.get("ou_volatility", 0.0)),
+            rng=rng,
+        )
+    jumps = np.zeros((n_paths, episode_length), dtype=np.float64)
+    if include_jumps:
+        jumps = _simulate_calibrated_jumps(
+            n_paths=n_paths,
+            episode_length=episode_length,
+            jump_probability=float(params.get("jump_probability", 0.0)),
+            jump_mean=float(params.get("jump_mean", 0.0)),
+            jump_std=float(params.get("jump_std", 0.0)),
+            rng=rng,
+        )
     prices = np.exp(np.tile(seasonal, (n_paths, 1)) + residuals + jumps)
     return np.maximum(prices, np.finfo(np.float64).tiny).astype(np.float32)
 

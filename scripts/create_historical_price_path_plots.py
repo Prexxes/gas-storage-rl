@@ -32,18 +32,32 @@ def main() -> None:
         calibration_end_date=historical_config["calibration_end_date"],
         jump_threshold_sigma=float(calibrated_config["jump_threshold_sigma"]),
     )
-    synthetic_paths = generate_price_paths(
-        environment_name="historical_calibrated",
-        n_paths=80,
-        episode_length=int(env_config["episode_length"]),
-        seed=int(config["seeds"]["dataset_seed"]),
-        params=calibration.to_price_params(),
-    )
-    _plot_paths(
-        synthetic_paths,
-        "Historically calibrated synthetic price paths",
-        out_dir / "historical_calibrated_synthetic_price_paths.png",
-    )
+    historical_settings = [
+        (
+            "historical_deterministic",
+            "Historical calibrated seasonality only",
+            "historical_deterministic_price_paths.png",
+        ),
+        (
+            "historical_ou",
+            "Historical calibrated seasonality with OU noise",
+            "historical_ou_price_paths.png",
+        ),
+        (
+            "historical_jump",
+            "Historical calibrated seasonality with OU noise and jumps",
+            "historical_jump_price_paths.png",
+        ),
+    ]
+    for environment_name, title, file_name in historical_settings:
+        synthetic_paths = generate_price_paths(
+            environment_name=environment_name,
+            n_paths=80,
+            episode_length=int(env_config["episode_length"]),
+            seed=int(config["seeds"]["dataset_seed"]),
+            params=calibration.to_price_params(),
+        )
+        _plot_paths(synthetic_paths, title, out_dir / file_name)
 
     backtest_paths, _ = build_historical_backtest_paths(
         historical_config["daily_backtest_csv"],
