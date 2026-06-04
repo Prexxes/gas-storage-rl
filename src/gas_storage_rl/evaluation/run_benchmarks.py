@@ -272,7 +272,7 @@ def main() -> None:
     parser.add_argument(
         "--split",
         action="append",
-        choices=["train", "validation", "test", "backtest"],
+        choices=["pretrain", "train", "validation", "test", "backtest"],
         help=(
             "Dataset split to benchmark. Can be passed multiple times. "
             "Defaults to train and validation; test only runs when explicit."

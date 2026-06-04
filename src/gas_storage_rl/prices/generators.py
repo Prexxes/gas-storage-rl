@@ -23,6 +23,7 @@ class PriceGeneratorConfig:
 
     environment_name: str
     episode_length: int = 365
+    n_pretrain_paths: int = 0
     n_train_paths: int = 5000
     n_validation_paths: int = 500
     n_test_paths: int = 1000
@@ -222,23 +223,32 @@ def _simulate_calibrated_jumps(
     return jump_mask * jump_sizes
 
 
-def split_seeds(dataset_seed: int) -> dict[str, int]:
+def split_seeds(dataset_seed: int, include_pretrain: bool = False) -> dict[str, int]:
     """Returns disjoint deterministic seeds for dataset splits."""
-    return {
+    seeds = {
         "train": int(dataset_seed),
         "validation": int(dataset_seed + 1_000_003),
         "test": int(dataset_seed + 2_000_003),
     }
+    if include_pretrain:
+        seeds = {
+            "pretrain": int(dataset_seed + 3_000_003),
+            **seeds,
+        }
+    return seeds
 
 
 def generate_dataset(config: PriceGeneratorConfig) -> dict[str, np.ndarray]:
-    """Generates train, validation, and test price paths."""
-    seeds = split_seeds(config.dataset_seed)
+    """Generates pretrain, train, validation, and test price paths."""
+    include_pretrain = config.n_pretrain_paths > 0
+    seeds = split_seeds(config.dataset_seed, include_pretrain=include_pretrain)
     counts = {
         "train": config.n_train_paths,
         "validation": config.n_validation_paths,
         "test": config.n_test_paths,
     }
+    if include_pretrain:
+        counts = {"pretrain": config.n_pretrain_paths, **counts}
     return {
         split: generate_price_paths(
             environment_name=config.environment_name,

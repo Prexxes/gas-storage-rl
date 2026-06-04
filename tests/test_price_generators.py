@@ -38,8 +38,8 @@ def test_positive_prices() -> None:
 
 def test_disjoint_split_seeds() -> None:
     """Dataset split seeds are disjoint."""
-    seeds = split_seeds(123)
-    assert len(set(seeds.values())) == 3
+    seeds = split_seeds(123, include_pretrain=True)
+    assert len(set(seeds.values())) == 4
 
 
 def test_dataset_shapes() -> None:
@@ -48,11 +48,13 @@ def test_dataset_shapes() -> None:
         PriceGeneratorConfig(
             environment_name="deterministic",
             episode_length=5,
+            n_pretrain_paths=1,
             n_train_paths=2,
             n_validation_paths=3,
             n_test_paths=4,
         )
     )
+    assert dataset["pretrain"].shape == (1, 5)
     assert dataset["train"].shape == (2, 5)
     assert dataset["validation"].shape == (3, 5)
     assert dataset["test"].shape == (4, 5)

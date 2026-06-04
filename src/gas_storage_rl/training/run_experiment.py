@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from pathlib import Path
+from typing import Any
+
+import torch
 
 from gas_storage_rl.agents.sb3_factory import make_sb3_agent
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
@@ -14,11 +18,30 @@ from gas_storage_rl.training.callbacks import TrainingLoggingCallback
 from gas_storage_rl.training.config import build_environment, load_config
 
 
+def load_pretrained_policy_state(model: Any, pretrained_policy: str | Path) -> Path:
+    """Loads pretrained SB3 policy weights into a freshly created model."""
+    policy_path = Path(pretrained_policy)
+    if policy_path.is_dir():
+        policy_path = policy_path / "policy_state_dict.pt"
+    if not policy_path.exists():
+        raise FileNotFoundError(f"Pretrained policy not found: {policy_path}")
+    state_dict = torch.load(policy_path, map_location=model.device)
+    model.policy.load_state_dict(state_dict)
+    return policy_path
+
+
 def main() -> None:
     """Runs a configured experiment."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--algorithm", required=True, choices=["ppo", "sac", "td3"])
+    parser.add_argument(
+        "--pretrained-policy",
+        help=(
+            "Path to policy_state_dict.pt or a pretraining run directory. "
+            "The RL model is still created from the current config."
+        ),
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -36,6 +59,12 @@ def main() -> None:
         config["agent_config"].get(args.algorithm, {}),
         seed=config["seeds"]["agent_seed"],
     )
+    pretrained_policy_path = None
+    if args.pretrained_policy:
+        pretrained_policy_path = load_pretrained_policy_state(
+            model,
+            args.pretrained_policy,
+        )
     from stable_baselines3.common.logger import configure
 
     sb3_logger = configure(str(logger.run_dir / "sb3_logs"), ["csv"])
@@ -64,6 +93,9 @@ def main() -> None:
         logger.append_csv("evaluations.csv", validation_metrics)
     summary = {
         "algorithm_name": args.algorithm,
+        "pretrained_policy": str(pretrained_policy_path)
+        if pretrained_policy_path is not None
+        else None,
         "validation": validation_metrics,
         "train_wall_time_s": train_wall_time,
         "eval_wall_time_s": eval_wall_time,

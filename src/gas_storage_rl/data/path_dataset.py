@@ -60,6 +60,7 @@ def compute_dataset_hash(config: PriceGeneratorConfig) -> str:
     payload = {
         "environment_name": config.environment_name,
         "episode_length": config.episode_length,
+        "n_pretrain_paths": config.n_pretrain_paths,
         "n_train_paths": config.n_train_paths,
         "n_validation_paths": config.n_validation_paths,
         "n_test_paths": config.n_test_paths,
@@ -104,7 +105,10 @@ def load_or_generate_price_dataset(
     Returns:
         Path dataset with train, validation, and test splits.
     """
-    seeds_by_split = split_seeds(config.dataset_seed)
+    seeds_by_split = split_seeds(
+        config.dataset_seed,
+        include_pretrain=config.n_pretrain_paths > 0,
+    )
     dataset_hash = compute_dataset_hash(config)
     dataset_dir = Path(cache_dir) / dataset_hash
     expected_files = [dataset_dir / f"{split}.npy" for split in seeds_by_split]
@@ -147,6 +151,7 @@ def _write_metadata(
         "dataset_hash": dataset_hash,
         "environment_name": config.environment_name,
         "episode_length": config.episode_length,
+        "n_pretrain_paths": config.n_pretrain_paths,
         "n_train_paths": config.n_train_paths,
         "n_validation_paths": config.n_validation_paths,
         "n_test_paths": config.n_test_paths,

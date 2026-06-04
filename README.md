@@ -10,9 +10,9 @@ The MVP uses three Gymnasium-compatible settings:
 - Seasonal OU: `log_price_t = seasonal_log_price_t + ou_residual_t`
 - Seasonal OU jump/stress: `log_price_t = seasonal_log_price_t + ou_residual_t + jump_component_t`
 
-Prices are generated as `price_t = exp(log_price_t)` and are strictly positive. Train, validation, and test paths are generated from deterministic, disjoint seeds. Deterministic environments repeat the same seasonal path through the same dataset interface.
+Prices are generated as `price_t = exp(log_price_t)` and are strictly positive. Pretrain, train, validation, and test paths are generated from deterministic, disjoint seeds. Deterministic environments repeat the same seasonal path through the same dataset interface.
 
-Generated price datasets are cached by default under `data/cache/{dataset_hash}/` as `train.npy`, `validation.npy`, `test.npy`, and `metadata.json`. The hash depends on the environment name, path counts, episode length, dataset seed, and price-process parameters. Set `dataset_config.force_regenerate: true` to overwrite an existing matching cache.
+Generated price datasets are cached by default under `data/cache/{dataset_hash}/` as `pretrain.npy`, `train.npy`, `validation.npy`, `test.npy`, and `metadata.json` when `dataset_config.n_pretrain_paths` is positive. The hash depends on the environment name, path counts, episode length, dataset seed, and price-process parameters. Set `dataset_config.force_regenerate: true` to overwrite an existing matching cache. Project configs use `n_pretrain_paths: 5000` while keeping the existing train, validation, and test path counts unchanged.
 
 ## Historical Calibration Pipeline
 
@@ -156,11 +156,38 @@ Perfect-foresight path-level trajectories can be logged explicitly:
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml --write-perfect-foresight-trajectories
 ```
 
+For behavior-cloning pretraining, generate only the separate pretrain trajectories:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml --split pretrain --write-perfect-foresight-trajectories
+```
+
 This writes `perfect_foresight_trajectories_<split>.jsonl` with one row per price path,
 including `start_date`, `end_date`, `prices`, `actions`, `storage_levels`,
 `objective_value`, `terminal_deviation`, and `success`. Synthetic generated paths do not
 always carry date metadata, so `start_date` and `end_date` are `null` unless the dataset
 provides per-path date ranges.
+
+Train a behavior-cloning policy from those trajectories:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.pretraining.behavior_cloning \
+  --config configs/debug.yaml \
+  --algorithm ppo \
+  --trajectories runs/benchmarks/<run_id>/perfect_foresight_trajectories_pretrain.jsonl
+```
+
+The pretraining run writes `pretrained_model.zip`, `policy_state_dict.pt`,
+`metadata.json`, and `training_history.json` under
+`runs/pretraining/<timestamp>-<config_name>-<algorithm>-<config_hash>/`. Start normal RL
+fine-tuning from the pretrained policy weights:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment \
+  --config configs/debug.yaml \
+  --algorithm ppo \
+  --pretrained-policy runs/pretraining/<run_id>/policy_state_dict.pt
+```
 
 Plotting helpers live in `gas_storage_rl.plotting` and return Matplotlib figures for price paths, action paths, storage levels, cumulative cashflows, price-action scatter, learning curves, and return distributions.
 

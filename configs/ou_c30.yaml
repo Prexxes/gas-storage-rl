@@ -12,7 +12,7 @@ environment_config:
   efficiency: 1.0
   transaction_cost: 0.0
   leakage: 0.0
-dataset_config: {n_train_paths: 5000, n_validation_paths: 500, n_test_paths: 1000, cache_dir: data/cache, use_cache: true, force_regenerate: false}
+dataset_config: {n_pretrain_paths: 5000, n_train_paths: 5000, n_validation_paths: 500, n_test_paths: 1000, cache_dir: data/cache, use_cache: true, force_regenerate: false}
 training_config: {total_timesteps: 500000, eval_freq: 20000, n_seeds: 10}
 evaluation_config: {deterministic: true, lsmc_action_grid: [-1.0, 0.0, 1.0]}
 plotting_config: {plot_split: validation, plot_n_paths: 50}

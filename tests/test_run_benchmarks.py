@@ -34,9 +34,18 @@ def _environment() -> tuple[PathDataset, StorageParams, dict[str, Any]]:
         dtype=np.float32,
     )
     dataset = PathDataset(
-        {"train": paths, "validation": paths + 1.0, "test": paths + 2.0},
-        {"train": 1, "validation": 2, "test": 3},
         {
+            "pretrain": paths + 3.0,
+            "train": paths,
+            "validation": paths + 1.0,
+            "test": paths + 2.0,
+        },
+        {"pretrain": 4, "train": 1, "validation": 2, "test": 3},
+        {
+            "pretrain": [
+                {"start_date": "2023-01-01", "end_date": "2023-01-03"},
+                {"start_date": "2023-01-04", "end_date": "2023-01-06"},
+            ],
             "train": [
                 {"start_date": "2024-01-01", "end_date": "2024-01-03"},
                 {"start_date": "2024-01-04", "end_date": "2024-01-06"},
@@ -174,3 +183,37 @@ def test_main_can_log_perfect_foresight_trajectories(
 
     metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["writes_perfect_foresight_trajectories"] is True
+
+
+def test_main_can_log_pretrain_split(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Benchmark CLI can evaluate the explicit pretrain split."""
+    config = _config(tmp_path)
+    monkeypatch.setattr(run_benchmarks, "load_config", lambda _: config)
+    monkeypatch.setattr(run_benchmarks, "build_environment", lambda _: _environment())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_benchmarks",
+            "--config",
+            "configs/debug.yaml",
+            "--split",
+            "pretrain",
+            "--write-perfect-foresight-trajectories",
+        ],
+    )
+
+    run_benchmarks.main()
+
+    run_dir = next((tmp_path / "runs" / "benchmarks").iterdir())
+    assert (run_dir / "benchmark_metrics_pretrain.json").exists()
+    trajectory_path = run_dir / "perfect_foresight_trajectories_pretrain.jsonl"
+    rows = [
+        json.loads(line)
+        for line in trajectory_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert rows[0]["split"] == "pretrain"
+    assert rows[0]["start_date"] == "2023-01-01"

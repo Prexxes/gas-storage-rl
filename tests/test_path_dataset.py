@@ -24,6 +24,7 @@ def test_price_dataset_cache_roundtrip(tmp_path) -> None:
     config = PriceGeneratorConfig(
         environment_name="ou",
         episode_length=4,
+        n_pretrain_paths=1,
         n_train_paths=2,
         n_validation_paths=1,
         n_test_paths=1,
@@ -32,8 +33,10 @@ def test_price_dataset_cache_roundtrip(tmp_path) -> None:
     dataset = load_or_generate_price_dataset(config, tmp_path)
     dataset_hash = compute_dataset_hash(config)
     assert (tmp_path / dataset_hash / "metadata.json").exists()
+    assert (tmp_path / dataset_hash / "pretrain.npy").exists()
     assert (tmp_path / dataset_hash / "train.npy").exists()
 
     loaded = load_or_generate_price_dataset(config, tmp_path)
+    assert np.allclose(dataset.get_paths("pretrain"), loaded.get_paths("pretrain"))
     assert np.allclose(dataset.get_paths("train"), loaded.get_paths("train"))
     assert dataset.seeds_by_split == loaded.seeds_by_split

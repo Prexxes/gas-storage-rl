@@ -34,6 +34,7 @@ def build_environment(
     price_generator_config = PriceGeneratorConfig(
         environment_name=environment_name,
         episode_length=env_config["episode_length"],
+        n_pretrain_paths=int(dataset_config.get("n_pretrain_paths", 0)),
         n_train_paths=dataset_config["n_train_paths"],
         n_validation_paths=dataset_config["n_validation_paths"],
         n_test_paths=dataset_config["n_test_paths"],
