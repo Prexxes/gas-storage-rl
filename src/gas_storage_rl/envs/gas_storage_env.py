@@ -25,6 +25,7 @@ class GasStorageEnv(gym.Env):
         price_scale: float = 50.0,
         reward_scale: float | None = None,
         penalty_factor: float = 0.5,
+        feasibility_penalty_factor: float = 0.5,
         fixed_path_id: int | None = None,
         seed: int | None = None,
     ) -> None:
@@ -36,11 +37,15 @@ class GasStorageEnv(gym.Env):
         self.price_scale = float(price_scale)
         self.reward_scale = float(reward_scale or price_scale)
         self.penalty_factor = float(penalty_factor)
+        self.feasibility_penalty_factor = float(feasibility_penalty_factor)
         self.fixed_path_id = fixed_path_id
         self.rng = np.random.default_rng(seed)
         self.episode_length = dataset.episode_length
         self.mean_training_price = float(np.mean(dataset.get_paths("train")))
         self.lambda_terminal = self.penalty_factor * self.mean_training_price
+        self.lambda_feasibility = (
+            self.feasibility_penalty_factor * self.mean_training_price
+        )
 
         high = np.array([np.inf, np.inf, 1.0], dtype=np.float32)
         low = np.array([0.0, 0.0, 0.0], dtype=np.float32)
@@ -100,24 +105,54 @@ class GasStorageEnv(gym.Env):
 
         is_final = self.current_step == self.episode_length - 1
         terminal_penalty = 0.0
+        mark_to_market_reward = 0.0
+        feasibility_penalty = 0.0
+        excess_inventory = 0.0
+        max_withdrawable_remaining = 0.0
         if is_final:
             deviation = abs(
                 self.storage_level - self.storage_params.target_terminal_inventory
             )
             terminal_penalty = -self.lambda_terminal * deviation
+            shaped_reward_raw = (
+                raw_cashflow + terminal_penalty - self.storage_level * price
+            )
+        else:
+            next_price = float(self.current_path[self.current_step + 1])
+            remaining_steps = self.episode_length - self.current_step - 1
+            max_withdrawable_remaining = (
+                remaining_steps * self.storage_params.withdrawal_rate
+            )
+            excess_inventory = max(
+                0.0,
+                self.storage_level
+                - self.storage_params.target_terminal_inventory
+                - max_withdrawable_remaining,
+            )
+            feasibility_penalty = -self.lambda_feasibility * excess_inventory
+            mark_to_market_reward = self.storage_level * (next_price - price)
+            shaped_reward_raw = mark_to_market_reward + feasibility_penalty
 
-        raw_reward = raw_cashflow + terminal_penalty
-        scaled_reward = raw_reward / self.reward_scale
+        economic_reward_raw = raw_cashflow + terminal_penalty
+        scaled_reward = shaped_reward_raw / self.reward_scale
         info = {
             "requested_action": requested_action,
             "executed_action": executed_action,
             "storage_level": self.storage_level,
             "previous_storage_level": previous_level,
+            "target_terminal_inventory": self.storage_params.target_terminal_inventory,
             "price": price,
+            "reward_scale": self.reward_scale,
             "raw_cashflow": raw_cashflow,
             "terminal_penalty": terminal_penalty,
-            "raw_reward": raw_reward,
+            "economic_reward_raw": economic_reward_raw,
+            "shaped_reward_raw": shaped_reward_raw,
+            "raw_reward": shaped_reward_raw,
             "scaled_reward": scaled_reward,
+            "mark_to_market_reward": mark_to_market_reward,
+            "feasibility_penalty": feasibility_penalty,
+            "excess_inventory": excess_inventory,
+            "max_withdrawable_remaining": max_withdrawable_remaining,
             "current_step": self.current_step,
             "path_id": self.current_path_id,
             "split": self.split,

@@ -56,10 +56,23 @@ The MVP sets efficiency to `1`, transaction costs to `0`, leakage to `0`, initia
 
 ## Reward
 
-Raw cashflow is:
+Raw economic cashflow is:
 
 ```text
 cashflow_t = -a_t p_t
+```
+
+Training uses a mark-to-market shaped reward. For non-terminal steps:
+
+```text
+mark_to_market_reward_t = v_(t+1) * (p_(t+1) - p_t)
+max_withdrawable_remaining = remaining_steps * withdrawal_rate
+excess_inventory = max(
+    0,
+    v_(t+1) - target_inventory - max_withdrawable_remaining,
+)
+feasibility_penalty = -lambda_feasibility * excess_inventory
+shaped_reward_t = mark_to_market_reward_t + feasibility_penalty
 ```
 
 At the final decision step:
@@ -67,9 +80,12 @@ At the final decision step:
 ```text
 lambda_terminal = penalty_factor * mean_training_price
 terminal_penalty = -lambda_terminal * abs(v_T - target_inventory)
+shaped_reward_T = cashflow_T + terminal_penalty - v_T p_T
 ```
 
-The raw reward is cashflow plus the terminal penalty if final. The scaled reward returned to the RL algorithm is `raw_reward / reward_scale`.
+The scaled reward returned to the RL algorithm is
+`shaped_reward / reward_scale`. Economic evaluation uses cashflow plus terminal
+penalty, not the shaped training reward.
 
 ## Observation Normalization
 

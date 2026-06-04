@@ -66,6 +66,9 @@ def build_environment(
             env_config.get("reward_scale", price_config.get("base_price", 50.0))
         ),
         "penalty_factor": float(env_config.get("penalty_factor", 0.5)),
+        "feasibility_penalty_factor": float(
+            env_config.get("feasibility_penalty_factor", 0.5)
+        ),
         "seed": int(seeds.get("env_seed", 0)),
     }
     return dataset, storage_params, env_kwargs

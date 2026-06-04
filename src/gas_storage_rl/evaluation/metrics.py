@@ -25,16 +25,43 @@ def aulc(steps: np.ndarray, returns: np.ndarray) -> float:
 
 def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
     """Summarizes per-step info dictionaries for one episode."""
-    raw_rewards = np.array([info["raw_reward"] for info in infos], dtype=np.float64)
-    scaled_rewards = np.array([info["scaled_reward"] for info in infos], dtype=np.float64)
+    economic_rewards = np.array(
+        [
+            info.get(
+                "economic_reward_raw",
+                info["raw_cashflow"] + info["terminal_penalty"],
+            )
+            for info in infos
+        ],
+        dtype=np.float64,
+    )
+    shaped_rewards = np.array(
+        [
+            (
+                info["shaped_reward_raw"]
+                if "shaped_reward_raw" in info
+                else info["raw_reward"]
+            )
+            for info in infos
+        ],
+        dtype=np.float64,
+    )
+    scaled_rewards = np.array(
+        [info["scaled_reward"] for info in infos],
+        dtype=np.float64,
+    )
     actions = np.array([info["executed_action"] for info in infos], dtype=np.float64)
     storage = np.array([info["storage_level"] for info in infos], dtype=np.float64)
+    target_inventory = float(infos[-1].get("target_terminal_inventory", 0.0))
+    reward_scale = float(infos[-1].get("reward_scale", 1.0))
     return {
-        "episode_return_raw": float(np.sum(raw_rewards)),
-        "episode_return_scaled": float(np.sum(scaled_rewards)),
+        "episode_return_raw": float(np.sum(economic_rewards)),
+        "episode_return_scaled": float(np.sum(economic_rewards) / reward_scale),
+        "episode_shaped_return_raw": float(np.sum(shaped_rewards)),
+        "episode_shaped_return_scaled": float(np.sum(scaled_rewards)),
         "episode_length": float(len(infos)),
         "final_storage_level": float(storage[-1]),
-        "terminal_deviation": float(abs(storage[-1])),
+        "terminal_deviation": float(abs(storage[-1] - target_inventory)),
         "terminal_penalty": float(np.sum([info["terminal_penalty"] for info in infos])),
         "cumulative_cashflow": float(np.sum([info["raw_cashflow"] for info in infos])),
         "number_of_constrained_actions": float(
@@ -62,15 +89,49 @@ def summarize_evaluation(
     return {
         "total_training_env_steps": total_training_env_steps,
         "split": split,
-        "mean_return_scaled": float(np.mean([item["episode_return_scaled"] for item in episode_summaries])),
+        "mean_return_scaled": float(
+            np.mean([item["episode_return_scaled"] for item in episode_summaries])
+        ),
+        "mean_shaped_return_scaled": float(
+            np.mean(
+                [
+                    item.get(
+                        "episode_shaped_return_scaled",
+                        item["episode_return_scaled"],
+                    )
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_shaped_return_raw": float(
+            np.mean(
+                [
+                    item.get("episode_shaped_return_raw", item["episode_return_raw"])
+                    for item in episode_summaries
+                ]
+            )
+        ),
         "mean_return_raw": float(np.mean(raw_returns)),
         "median_return_raw": float(np.median(raw_returns)),
         "std_return_raw": float(np.std(raw_returns)),
         "min_return_raw": float(np.min(raw_returns)),
         "max_return_raw": float(np.max(raw_returns)),
         "interquartile_mean_return_raw": interquartile_mean(raw_returns),
-        "mean_terminal_deviation": float(np.mean([item["terminal_deviation"] for item in episode_summaries])),
-        "mean_cumulative_cashflow": float(np.mean([item["cumulative_cashflow"] for item in episode_summaries])),
-        "mean_terminal_penalty": float(np.mean([item["terminal_penalty"] for item in episode_summaries])),
-        "mean_number_of_constrained_actions": float(np.mean([item["number_of_constrained_actions"] for item in episode_summaries])),
+        "mean_terminal_deviation": float(
+            np.mean([item["terminal_deviation"] for item in episode_summaries])
+        ),
+        "mean_cumulative_cashflow": float(
+            np.mean([item["cumulative_cashflow"] for item in episode_summaries])
+        ),
+        "mean_terminal_penalty": float(
+            np.mean([item["terminal_penalty"] for item in episode_summaries])
+        ),
+        "mean_number_of_constrained_actions": float(
+            np.mean(
+                [
+                    item["number_of_constrained_actions"]
+                    for item in episode_summaries
+                ]
+            )
+        ),
     }
