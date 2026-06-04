@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from scipy.optimize import linprog
@@ -113,3 +114,30 @@ class PerfectForesightBaseline:
             "median_return_raw": float(np.median(values)),
             "std_return_raw": float(np.std(values)),
         }
+
+    def solve_paths(
+        self,
+        paths: np.ndarray,
+        split: str,
+        date_ranges: list[dict[str, str]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Solves and serializes perfect-foresight trajectories for fixed paths."""
+        trajectories = []
+        for path_id, prices in enumerate(paths):
+            result = self.solve_path(prices)
+            date_range = date_ranges[path_id] if date_ranges is not None else {}
+            trajectories.append(
+                {
+                    "split": split,
+                    "path_id": path_id,
+                    "start_date": date_range.get("start_date"),
+                    "end_date": date_range.get("end_date"),
+                    "prices": prices.astype(float).tolist(),
+                    "actions": result.actions.astype(float).tolist(),
+                    "storage_levels": result.storage_levels.astype(float).tolist(),
+                    "objective_value": result.objective_value,
+                    "terminal_deviation": result.terminal_deviation,
+                    "success": result.success,
+                }
+            )
+        return trajectories

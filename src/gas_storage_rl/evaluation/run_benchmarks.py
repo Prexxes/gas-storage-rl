@@ -74,11 +74,20 @@ def write_metrics_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Writes one JSON object per line."""
+    with path.open("w", encoding="utf-8") as file:
+        for row in rows:
+            file.write(json.dumps(row, default=str))
+            file.write("\n")
+
+
 def benchmark_metadata(
     run_id: str,
     config_name: str,
     hash_value: str,
     splits: list[str],
+    writes_perfect_foresight_trajectories: bool,
 ) -> dict[str, Any]:
     """Returns reproducibility metadata for a benchmark run."""
     try:
@@ -95,6 +104,9 @@ def benchmark_metadata(
         "config_hash": hash_value,
         "splits": splits,
         "contains_test_split": "test" in splits,
+        "writes_perfect_foresight_trajectories": (
+            writes_perfect_foresight_trajectories
+        ),
         "git_commit_hash": git_commit,
         "python_version": sys.version,
         "platform": platform.platform(),
@@ -139,6 +151,7 @@ def run_benchmarks(
     config: dict[str, Any],
     config_name: str,
     splits: list[str],
+    write_perfect_foresight_trajectories: bool = False,
 ) -> dict[str, Any]:
     """Runs all benchmark policies and returns metrics by split."""
     dataset, storage_params, env_kwargs = build_environment(config)
@@ -169,6 +182,8 @@ def run_benchmarks(
         "config_name": config_name,
         "splits": {},
     }
+    if write_perfect_foresight_trajectories:
+        output["_perfect_foresight_trajectories"] = {}
     for split in splits:
         env = GasStorageEnv(dataset, split, storage_params, **env_kwargs)
         random_policy = RandomPolicy(seed=config["seeds"]["eval_seed"])
@@ -181,6 +196,13 @@ def run_benchmarks(
             "lsmc": lsmc.evaluate(split_paths),
             "perfect_foresight": perfect_foresight.evaluate_paths(split_paths),
         }
+        if write_perfect_foresight_trajectories:
+            date_ranges = None
+            if dataset.date_ranges_by_split is not None:
+                date_ranges = dataset.date_ranges_by_split.get(split)
+            output["_perfect_foresight_trajectories"][split] = (
+                perfect_foresight.solve_paths(split_paths, split, date_ranges)
+            )
     return output
 
 
@@ -189,6 +211,7 @@ def log_benchmark_results(
     config: dict[str, Any],
     config_name: str,
     splits: list[str],
+    write_perfect_foresight_trajectories: bool = False,
 ) -> Path:
     """Persists benchmark metrics as config, metadata, JSON, and CSV files."""
     hash_value = config_hash(config)
@@ -200,10 +223,18 @@ def log_benchmark_results(
     write_json(run_dir / "config.json", config)
     write_json(
         run_dir / "metadata.json",
-        benchmark_metadata(run_id, config_name, hash_value, splits),
+        benchmark_metadata(
+            run_id,
+            config_name,
+            hash_value,
+            splits,
+            write_perfect_foresight_trajectories,
+        ),
     )
 
     csv_rows = []
+    trajectory_counts = {}
+    trajectory_file_names = {}
     for split, benchmarks in output["splits"].items():
         split_payload = {"split": split, "benchmarks": benchmarks}
         write_json(run_dir / f"benchmark_metrics_{split}.json", split_payload)
@@ -218,9 +249,19 @@ def log_benchmark_results(
                     hash_value,
                 )
             )
+        if write_perfect_foresight_trajectories:
+            trajectories = output["_perfect_foresight_trajectories"][split]
+            file_name = f"perfect_foresight_trajectories_{split}.jsonl"
+            write_jsonl(run_dir / file_name, trajectories)
+            trajectory_counts[split] = len(trajectories)
+            trajectory_file_names[split] = file_name
     write_metrics_csv(run_dir / "benchmark_metrics.csv", csv_rows)
     output["run_dir"] = str(run_dir)
     output["run_id"] = run_id
+    if write_perfect_foresight_trajectories:
+        output.pop("_perfect_foresight_trajectories", None)
+        output["perfect_foresight_trajectory_counts"] = trajectory_counts
+        output["perfect_foresight_trajectory_files"] = trajectory_file_names
     return run_dir
 
 
@@ -237,12 +278,31 @@ def main() -> None:
             "Defaults to train and validation; test only runs when explicit."
         ),
     )
+    parser.add_argument(
+        "--write-perfect-foresight-trajectories",
+        action="store_true",
+        help=(
+            "Write per-path perfect-foresight prices, actions, storage levels, "
+            "objective values, terminal deviations, success flags, and dates."
+        ),
+    )
     args = parser.parse_args()
     config = load_config(args.config)
     splits = args.split or list(DEFAULT_SPLITS)
     config_name = Path(args.config).stem
-    output = run_benchmarks(config, config_name, splits)
-    log_benchmark_results(output, config, config_name, splits)
+    output = run_benchmarks(
+        config,
+        config_name,
+        splits,
+        write_perfect_foresight_trajectories=args.write_perfect_foresight_trajectories,
+    )
+    log_benchmark_results(
+        output,
+        config,
+        config_name,
+        splits,
+        write_perfect_foresight_trajectories=args.write_perfect_foresight_trajectories,
+    )
     print(json.dumps(output, indent=2))
 
 

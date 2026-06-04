@@ -150,6 +150,18 @@ long-format `benchmark_metrics.csv` with one row per benchmark and split. The sa
 runner works for historically calibrated synthetic price configs because it evaluates
 the dataset produced by the selected config.
 
+Perfect-foresight path-level trajectories can be logged explicitly:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml --write-perfect-foresight-trajectories
+```
+
+This writes `perfect_foresight_trajectories_<split>.jsonl` with one row per price path,
+including `start_date`, `end_date`, `prices`, `actions`, `storage_levels`,
+`objective_value`, `terminal_deviation`, and `success`. Synthetic generated paths do not
+always carry date metadata, so `start_date` and `end_date` are `null` unless the dataset
+provides per-path date ranges.
+
 Plotting helpers live in `gas_storage_rl.plotting` and return Matplotlib figures for price paths, action paths, storage levels, cumulative cashflows, price-action scatter, learning curves, and return distributions.
 
 Create plots for a saved run:

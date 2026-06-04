@@ -36,6 +36,20 @@ def _environment() -> tuple[PathDataset, StorageParams, dict[str, Any]]:
     dataset = PathDataset(
         {"train": paths, "validation": paths + 1.0, "test": paths + 2.0},
         {"train": 1, "validation": 2, "test": 3},
+        {
+            "train": [
+                {"start_date": "2024-01-01", "end_date": "2024-01-03"},
+                {"start_date": "2024-01-04", "end_date": "2024-01-06"},
+            ],
+            "validation": [
+                {"start_date": "2024-02-01", "end_date": "2024-02-03"},
+                {"start_date": "2024-02-04", "end_date": "2024-02-06"},
+            ],
+            "test": [
+                {"start_date": "2024-03-01", "end_date": "2024-03-03"},
+                {"start_date": "2024-03-04", "end_date": "2024-03-06"},
+            ],
+        },
     )
     return dataset, StorageParams(capacity=2.0), {"seed": 1}
 
@@ -114,3 +128,49 @@ def test_main_logs_test_only_when_explicit(
     )
     assert len(rows) == 4
     assert {row["split"] for row in rows} == {"test"}
+
+
+def test_main_can_log_perfect_foresight_trajectories(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Perfect-foresight trajectories are logged as JSONL when requested."""
+    config = _config(tmp_path)
+    monkeypatch.setattr(run_benchmarks, "load_config", lambda _: config)
+    monkeypatch.setattr(run_benchmarks, "build_environment", lambda _: _environment())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_benchmarks",
+            "--config",
+            "configs/debug.yaml",
+            "--split",
+            "validation",
+            "--write-perfect-foresight-trajectories",
+        ],
+    )
+
+    run_benchmarks.main()
+
+    run_dir = next((tmp_path / "runs" / "benchmarks").iterdir())
+    trajectory_path = run_dir / "perfect_foresight_trajectories_validation.jsonl"
+    assert trajectory_path.exists()
+    rows = [
+        json.loads(line)
+        for line in trajectory_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 2
+    assert rows[0]["split"] == "validation"
+    assert rows[0]["path_id"] == 0
+    assert rows[0]["start_date"] == "2024-02-01"
+    assert rows[0]["end_date"] == "2024-02-03"
+    assert rows[0]["prices"] == [11.0, 21.0, 31.0]
+    assert len(rows[0]["actions"]) == 3
+    assert len(rows[0]["storage_levels"]) == 4
+    assert "objective_value" in rows[0]
+    assert "terminal_deviation" in rows[0]
+    assert rows[0]["success"] is True
+
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["writes_perfect_foresight_trajectories"] is True
