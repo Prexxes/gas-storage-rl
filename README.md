@@ -136,6 +136,20 @@ Run benchmarks:
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml
 ```
 
+By default, benchmark runs evaluate and log the `train` and `validation` splits only.
+The synthetic `test` split is evaluated only when requested explicitly:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml --split test
+```
+
+Multiple splits can be requested by repeating `--split`. Benchmark outputs are stored
+under `runs/benchmarks/<timestamp>-<config_name>-<config_hash>/` with `config.json`,
+`metadata.json`, one `benchmark_metrics_<split>.json` file per evaluated split, and a
+long-format `benchmark_metrics.csv` with one row per benchmark and split. The same
+runner works for historically calibrated synthetic price configs because it evaluates
+the dataset produced by the selected config.
+
 Plotting helpers live in `gas_storage_rl.plotting` and return Matplotlib figures for price paths, action paths, storage levels, cumulative cashflows, price-action scatter, learning curves, and return distributions.
 
 Create plots for a saved run:
