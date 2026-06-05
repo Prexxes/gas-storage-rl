@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 import platform
@@ -72,12 +73,28 @@ def load_trajectory_samples(
             path_actions = np.asarray(trajectory["actions"], dtype=np.float32)
             horizon = len(path_actions)
             denominator = max(horizon - 1, 1)
+            start_date_value = trajectory.get("start_date")
+            start_date = (
+                datetime.strptime(start_date_value, "%Y-%m-%d").date()
+                if start_date_value
+                else date(2001, 1, 1)
+            )
             for step in range(horizon):
+                current_date = start_date + timedelta(days=step)
+                days_in_year = 366 if _is_leap_year(current_date.year) else 365
+                day_angle = (
+                    2.0
+                    * np.pi
+                    * (current_date.timetuple().tm_yday - 1)
+                    / days_in_year
+                )
                 observations.append(
                     [
                         float(storage_levels[step] / capacity),
                         float(prices[step] / price_scale),
-                        float(step / denominator),
+                        float(np.sin(day_angle)),
+                        float(np.cos(day_angle)),
+                        float((horizon - 1 - step) / denominator),
                     ]
                 )
                 actions.append([float(path_actions[step])])
@@ -87,6 +104,11 @@ def load_trajectory_samples(
         np.asarray(observations, dtype=np.float32),
         np.asarray(actions, dtype=np.float32),
     )
+
+
+def _is_leap_year(year: int) -> bool:
+    """Returns whether a Gregorian calendar year is a leap year."""
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
 def predict_actor_actions(

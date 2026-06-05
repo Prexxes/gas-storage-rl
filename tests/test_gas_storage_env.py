@@ -37,13 +37,13 @@ def test_gymnasium_reset_step_api_shape_and_dtype() -> None:
     """Reset and step follow the Gymnasium API."""
     env = make_env()
     obs, info = env.reset(seed=1)
-    assert obs.shape == (3,)
+    assert obs.shape == (5,)
     assert obs.dtype == np.float32
     assert info["path_id"] == 0
     obs, reward, terminated, truncated, info = env.step(
         np.array([0.0], dtype=np.float32)
     )
-    assert obs.shape == (3,)
+    assert obs.shape == (5,)
     assert isinstance(reward, float)
     assert not terminated
     assert not truncated
@@ -99,4 +99,30 @@ def test_normalized_observation_values() -> None:
     """Initial observation is normalized as specified."""
     env = make_env()
     obs, _ = env.reset()
-    assert np.allclose(obs, np.array([0.0, 1.0, 0.0], dtype=np.float32))
+    assert np.allclose(
+        obs,
+        np.array([0.0, 1.0, 0.0, 1.0, 1.0], dtype=np.float32),
+    )
+
+
+def test_observation_uses_path_calendar_date() -> None:
+    """Calendar features reflect a historical path's actual start date."""
+    prices = np.array([[10.0, 20.0, 30.0]], dtype=np.float32)
+    dataset = PathDataset(
+        {"train": prices},
+        {"train": 1},
+        {"train": [{"start_date": "2025-06-06", "end_date": "2025-06-08"}]},
+    )
+    env = GasStorageEnv(
+        dataset,
+        "train",
+        StorageParams(capacity=2.0),
+        price_scale=10.0,
+        fixed_path_id=0,
+    )
+
+    obs, _ = env.reset()
+
+    angle = 2.0 * np.pi * (157 - 1) / 365
+    assert np.allclose(obs[2:4], [np.sin(angle), np.cos(angle)])
+    assert obs[4] == 1.0

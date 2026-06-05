@@ -92,10 +92,13 @@ penalty, not the shaped training reward.
 The observation vector is:
 
 ```text
-[v_t / C, p_t / price_scale, t / (T - 1)]
+[v_t / C, p_t / price_scale, sin(day_of_year), cos(day_of_year),
+ (T - 1 - t) / (T - 1)]
 ```
 
-The observation dtype is `np.float32`.
+The calendar features use the path's actual date when date metadata is
+available. Synthetic paths without date metadata start on January 1. The
+observation dtype is `np.float32`.
 
 ## Benchmarks
 

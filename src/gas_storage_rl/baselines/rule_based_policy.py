@@ -57,5 +57,8 @@ class RuleBasedPolicy:
         del deterministic
         storage_level = float(observation[0] * self.capacity)
         price = float(observation[1] * 50.0)
-        current_step = int(round(float(observation[2]) * (self.episode_length - 1)))
+        remaining_time = float(observation[4])
+        current_step = int(
+            round((1.0 - remaining_time) * max(self.episode_length - 1, 0))
+        )
         return np.array([self.act(storage_level, price, current_step)], dtype=np.float32), None

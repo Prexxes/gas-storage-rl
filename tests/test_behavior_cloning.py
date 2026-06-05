@@ -5,11 +5,15 @@ from __future__ import annotations
 import importlib.util
 import json
 
+import numpy as np
 import pytest
 
 from gas_storage_rl.agents.sb3_factory import make_sb3_agent
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
-from gas_storage_rl.pretraining.behavior_cloning import run_pretraining
+from gas_storage_rl.pretraining.behavior_cloning import (
+    load_trajectory_samples,
+    run_pretraining,
+)
 from gas_storage_rl.training.config import build_environment, load_config
 from gas_storage_rl.training.run_experiment import load_pretrained_policy_state
 
@@ -18,6 +22,30 @@ pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("stable_baselines3") is None,
     reason="stable-baselines3 is not installed",
 )
+
+
+def test_trajectory_samples_include_calendar_and_remaining_time(tmp_path) -> None:
+    """Trajectory observations use the five-feature time representation."""
+    trajectory_path = tmp_path / "trajectory.jsonl"
+    trajectory = {
+        "start_date": "2025-06-06",
+        "prices": [50.0, 45.0, 60.0],
+        "actions": [1.0, 0.0, -1.0],
+        "storage_levels": [0.0, 1.0, 1.0, 0.0],
+    }
+    trajectory_path.write_text(json.dumps(trajectory) + "\n", encoding="utf-8")
+
+    observations, actions = load_trajectory_samples(
+        trajectory_path,
+        capacity=2.0,
+        price_scale=50.0,
+    )
+
+    angle = 2.0 * np.pi * (157 - 1) / 365
+    assert observations.shape == (3, 5)
+    assert actions.shape == (3, 1)
+    assert np.allclose(observations[0], [0.0, 1.0, np.sin(angle), np.cos(angle), 1.0])
+    assert observations[-1, 4] == 0.0
 
 
 @pytest.mark.parametrize("algorithm_name", ["ppo", "sac", "td3"])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import gymnasium as gym
@@ -47,8 +48,8 @@ class GasStorageEnv(gym.Env):
             self.feasibility_penalty_factor * self.mean_training_price
         )
 
-        high = np.array([np.inf, np.inf, 1.0], dtype=np.float32)
-        low = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        high = np.array([np.inf, np.inf, 1.0, 1.0, 1.0], dtype=np.float32)
+        low = np.array([0.0, 0.0, -1.0, -1.0, 0.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
         self.action_space = spaces.Box(
             low=np.array([-1.0], dtype=np.float32),
@@ -166,11 +167,37 @@ class GasStorageEnv(gym.Env):
         """Builds a normalized observation."""
         step_index = min(self.current_step, self.episode_length - 1)
         price = float(self.current_path[step_index])
+        current_date = self._current_date(step_index)
+        days_in_year = 366 if _is_leap_year(current_date.year) else 365
+        day_angle = (
+            2.0 * np.pi * (current_date.timetuple().tm_yday - 1) / days_in_year
+        )
+        time_denominator = max(self.episode_length - 1, 1)
+        remaining_time = (self.episode_length - 1 - step_index) / time_denominator
         return np.array(
             [
                 self.storage_level / self.storage_params.capacity,
                 price / self.price_scale,
-                step_index / (self.episode_length - 1),
+                np.sin(day_angle),
+                np.cos(day_angle),
+                remaining_time,
             ],
             dtype=np.float32,
         )
+
+    def _current_date(self, step_index: int) -> date:
+        """Returns the calendar date represented by an episode step."""
+        if self.dataset.date_ranges_by_split is None:
+            return date(2001, 1, 1) + timedelta(days=step_index)
+        date_ranges = self.dataset.date_ranges_by_split.get(self.split)
+        if not date_ranges:
+            return date(2001, 1, 1) + timedelta(days=step_index)
+        start_date = datetime.strptime(
+            date_ranges[self.current_path_id]["start_date"], "%Y-%m-%d"
+        ).date()
+        return start_date + timedelta(days=step_index)
+
+
+def _is_leap_year(year: int) -> bool:
+    """Returns whether a Gregorian calendar year is a leap year."""
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
