@@ -39,6 +39,12 @@ def build_environment(
         n_validation_paths=dataset_config["n_validation_paths"],
         n_test_paths=dataset_config["n_test_paths"],
         dataset_seed=seeds["dataset_seed"],
+        max_start_offset=int(
+            dataset_config.get(
+                "max_start_offset",
+                env_config["episode_length"] - 1,
+            )
+        ),
         params=price_config,
     )
     dataset = load_or_generate_price_dataset(

@@ -28,7 +28,18 @@ class PriceGeneratorConfig:
     n_validation_paths: int = 500
     n_test_paths: int = 1000
     dataset_seed: int = 123
+    max_start_offset: int | None = None
     params: dict[str, Any] = field(default_factory=default_price_parameters)
+
+    @property
+    def simulation_length(self) -> int:
+        """Returns the stored raw-path length used for rolling episodes."""
+        max_start_offset = (
+            self.episode_length - 1
+            if self.max_start_offset is None
+            else self.max_start_offset
+        )
+        return self.episode_length + max_start_offset
 
 
 def generate_price_paths(
@@ -79,6 +90,7 @@ def generate_price_paths(
         base_price=process_params["base_price"],
         amplitude=process_params["seasonal_amplitude"],
         phase=process_params["seasonal_phase"],
+        annual_period=365,
     )
     log_prices = np.tile(seasonal, (n_paths, 1))
 
@@ -253,7 +265,7 @@ def generate_dataset(config: PriceGeneratorConfig) -> dict[str, np.ndarray]:
         split: generate_price_paths(
             environment_name=config.environment_name,
             n_paths=count,
-            episode_length=config.episode_length,
+            episode_length=config.simulation_length,
             seed=seeds[split],
             params=config.params,
         )

@@ -100,6 +100,12 @@ The calendar features use the path's actual date when date metadata is
 available. Synthetic paths without date metadata start on January 1. The
 observation dtype is `np.float32`.
 
+Synthetic datasets store contiguous raw paths of length `2T - 1`. Training
+environments sample a start offset uniformly at each reset and expose the next
+`T` consecutive prices. Pretraining, validation, test, and benchmark runs use
+fixed seeded start offsets per path. LSMC continuation regressions include
+calendar sine and cosine terms and their interactions with normalized price.
+
 ## Benchmarks
 
 Random policy samples uniformly from `[-1, 1]`. Rule-based policy uses training price quantiles with liquidation feasibility checks. LSMC fits continuation values backward on training paths using the discrete grid `[-1, 0, 1]`. Perfect foresight solves a deterministic linear program for each known path.

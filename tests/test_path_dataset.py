@@ -37,6 +37,12 @@ def test_price_dataset_cache_roundtrip(tmp_path) -> None:
     assert (tmp_path / dataset_hash / "train.npy").exists()
 
     loaded = load_or_generate_price_dataset(config, tmp_path)
+    assert dataset.paths_by_split["train"].shape == (2, 7)
+    assert dataset.get_paths("train").shape == (2, 4)
     assert np.allclose(dataset.get_paths("pretrain"), loaded.get_paths("pretrain"))
     assert np.allclose(dataset.get_paths("train"), loaded.get_paths("train"))
+    assert np.array_equal(
+        dataset.get_start_indices("train"),
+        loaded.get_start_indices("train"),
+    )
     assert dataset.seeds_by_split == loaded.seeds_by_split

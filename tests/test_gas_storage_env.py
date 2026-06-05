@@ -126,3 +126,58 @@ def test_observation_uses_path_calendar_date() -> None:
     angle = 2.0 * np.pi * (157 - 1) / 365
     assert np.allclose(obs[2:4], [np.sin(angle), np.cos(angle)])
     assert obs[4] == 1.0
+
+
+def test_training_reset_samples_contiguous_windows_reproducibly() -> None:
+    """Training resets sample starts while preserving contiguous prices."""
+    raw_path = np.arange(1.0, 8.0, dtype=np.float32).reshape(1, -1)
+    dataset = PathDataset(
+        {"train": raw_path},
+        {"train": 1},
+        episode_length_override=4,
+        start_indices_by_split={"train": np.array([2])},
+        base_dates_by_split={"train": "2001-01-01"},
+    )
+    env = GasStorageEnv(
+        dataset,
+        "train",
+        StorageParams(capacity=2.0),
+        price_scale=1.0,
+    )
+
+    obs, info = env.reset(seed=7)
+    expected_start = int(np.random.default_rng(7).integers(0, 4))
+
+    assert info["start_index"] == expected_start
+    assert obs[1] == raw_path[0, expected_start]
+    next_obs, _, _, _, _ = env.step([0.0])
+    assert next_obs[1] == raw_path[0, expected_start + 1]
+
+
+def test_explicit_path_id_uses_fixed_start_index() -> None:
+    """Evaluation resets use the stored deterministic start per path."""
+    raw_path = np.arange(1.0, 8.0, dtype=np.float32).reshape(1, -1)
+    dataset = PathDataset(
+        {"train": raw_path, "validation": raw_path},
+        {"train": 1, "validation": 2},
+        episode_length_override=4,
+        start_indices_by_split={
+            "train": np.array([0]),
+            "validation": np.array([3]),
+        },
+        base_dates_by_split={
+            "train": "2001-01-01",
+            "validation": "2001-01-01",
+        },
+    )
+    env = GasStorageEnv(
+        dataset,
+        "validation",
+        StorageParams(capacity=2.0),
+        price_scale=1.0,
+    )
+
+    obs, info = env.reset(options={"path_id": 0})
+
+    assert info["start_index"] == 3
+    assert obs[1] == 4.0

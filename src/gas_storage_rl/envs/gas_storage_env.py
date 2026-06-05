@@ -57,6 +57,7 @@ class GasStorageEnv(gym.Env):
             dtype=np.float32,
         )
         self.current_step = 0
+        self.current_start_index = 0
         self.storage_level = storage_params.initial_inventory
         self.current_path_id = 0
         self.current_path = self.dataset.get_path(split, 0)
@@ -80,11 +81,31 @@ class GasStorageEnv(gym.Env):
             self.current_path_id = int(self.fixed_path_id)
         else:
             self.current_path_id = self.dataset.sample_path_id(self.split, self.rng)
-        self.current_path = self.dataset.get_path(self.split, self.current_path_id)
+        raw_path = self.dataset.get_raw_path(self.split, self.current_path_id)
+        max_start = len(raw_path) - self.episode_length
+        if "start_index" in options:
+            self.current_start_index = int(options["start_index"])
+        elif (
+            self.split == "train"
+            and "path_id" not in options
+            and self.fixed_path_id is None
+            and max_start > 0
+        ):
+            self.current_start_index = int(self.rng.integers(0, max_start + 1))
+        else:
+            self.current_start_index = int(
+                self.dataset.get_start_indices(self.split)[self.current_path_id]
+            )
+        self.current_path = self.dataset.get_path_window(
+            self.split,
+            self.current_path_id,
+            self.current_start_index,
+        )
         return self._observation(), {
             "path_id": self.current_path_id,
             "split": self.split,
             "current_step": self.current_step,
+            "start_index": self.current_start_index,
         }
 
     def step(
@@ -155,6 +176,7 @@ class GasStorageEnv(gym.Env):
             "excess_inventory": excess_inventory,
             "max_withdrawable_remaining": max_withdrawable_remaining,
             "current_step": self.current_step,
+            "start_index": self.current_start_index,
             "path_id": self.current_path_id,
             "split": self.split,
         }
@@ -187,6 +209,16 @@ class GasStorageEnv(gym.Env):
 
     def _current_date(self, step_index: int) -> date:
         """Returns the calendar date represented by an episode step."""
+        if (
+            self.dataset.base_dates_by_split is not None
+            and self.split in self.dataset.base_dates_by_split
+        ):
+            base_date = datetime.strptime(
+                self.dataset.base_dates_by_split[self.split], "%Y-%m-%d"
+            ).date()
+            return base_date + timedelta(
+                days=self.current_start_index + step_index
+            )
         if self.dataset.date_ranges_by_split is None:
             return date(2001, 1, 1) + timedelta(days=step_index)
         date_ranges = self.dataset.date_ranges_by_split.get(self.split)

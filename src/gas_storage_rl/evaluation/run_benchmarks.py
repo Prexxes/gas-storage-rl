@@ -172,7 +172,7 @@ def run_benchmarks(
         storage_params,
         train_env.lambda_terminal,
         action_grid=action_grid,
-    ).fit(train_paths)
+    ).fit(train_paths, dataset.get_start_dates("train"))
     perfect_foresight = PerfectForesightBaseline(
         storage_params,
         train_env.lambda_terminal,
@@ -193,7 +193,10 @@ def run_benchmarks(
         output["splits"][split] = {
             "random": random_metrics,
             "rule_based": rule_metrics,
-            "lsmc": lsmc.evaluate(split_paths),
+            "lsmc": lsmc.evaluate(
+                split_paths,
+                dataset.get_start_dates(split),
+            ),
             "perfect_foresight": perfect_foresight.evaluate_paths(split_paths),
         }
         if write_perfect_foresight_trajectories:

@@ -3,17 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 import numpy as np
 
 from gas_storage_rl.envs.storage_dynamics import StorageParams, clip_storage_action
 
 
-def _features(storage: np.ndarray, price: np.ndarray, time_fraction: float, capacity: float):
+def _features(
+    storage: np.ndarray,
+    price: np.ndarray,
+    time_fraction: float,
+    capacity: float,
+    calendar_angles: np.ndarray,
+) -> np.ndarray:
     """Builds polynomial regression features up to degree two."""
     normalized_storage = storage / capacity
     normalized_price = price / np.maximum(np.mean(price), 1e-8)
     time = np.full_like(normalized_storage, time_fraction, dtype=np.float64)
+    sin_day = np.sin(calendar_angles)
+    cos_day = np.cos(calendar_angles)
     return np.column_stack(
         [
             np.ones_like(normalized_storage),
@@ -23,8 +32,29 @@ def _features(storage: np.ndarray, price: np.ndarray, time_fraction: float, capa
             normalized_storage**2,
             normalized_price**2,
             normalized_storage * normalized_price,
+            sin_day,
+            cos_day,
+            normalized_price * sin_day,
+            normalized_price * cos_day,
         ]
     )
+
+
+def _calendar_angles(start_dates: list[date], step: int) -> np.ndarray:
+    """Returns cyclic day-of-year angles for one relative episode step."""
+    angles = []
+    for start_date in start_dates:
+        current_date = start_date + timedelta(days=step)
+        days_in_year = 366 if _is_leap_year(current_date.year) else 365
+        angles.append(
+            2.0 * np.pi * (current_date.timetuple().tm_yday - 1) / days_in_year
+        )
+    return np.asarray(angles, dtype=np.float64)
+
+
+def _is_leap_year(year: int) -> bool:
+    """Returns whether a Gregorian calendar year is a leap year."""
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
 @dataclass
@@ -38,9 +68,17 @@ class LSMCBenchmark:
     )
     coefficients: dict[int, np.ndarray] = field(default_factory=dict)
 
-    def fit(self, train_paths: np.ndarray) -> "LSMCBenchmark":
+    def fit(
+        self,
+        train_paths: np.ndarray,
+        start_dates: list[date] | None = None,
+    ) -> "LSMCBenchmark":
         """Fits continuation value regressions on training paths."""
         n_paths, horizon = train_paths.shape
+        if start_dates is None:
+            start_dates = [date(2001, 1, 1)] * n_paths
+        if len(start_dates) != n_paths:
+            raise ValueError("start_dates must contain one date per path")
         storage = np.zeros(n_paths, dtype=np.float64)
         # A simple rollout state proxy keeps this MVP small and reproducible.
         values_next = np.zeros(n_paths, dtype=np.float64)
@@ -65,7 +103,13 @@ class LSMCBenchmark:
                 candidates.append(reward + values_next)
                 next_levels.append(level_next)
             best_values = np.max(np.vstack(candidates), axis=0)
-            x = _features(storage, price, step / max(horizon - 1, 1), self.storage_params.capacity)
+            x = _features(
+                storage,
+                price,
+                step / max(horizon - 1, 1),
+                self.storage_params.capacity,
+                _calendar_angles(start_dates, step),
+            )
             self.coefficients[step] = np.linalg.lstsq(x, best_values, rcond=None)[0]
             best_action_index = np.argmax(np.vstack(candidates), axis=0)
             storage = np.array(
@@ -74,7 +118,14 @@ class LSMCBenchmark:
             values_next = best_values
         return self
 
-    def predict_action(self, storage_level: float, price: float, current_step: int, horizon: int) -> float:
+    def predict_action(
+        self,
+        storage_level: float,
+        price: float,
+        current_step: int,
+        horizon: int,
+        start_date: date | None = None,
+    ) -> float:
         """Chooses the best grid action using fitted continuation estimates."""
         best_action = 0.0
         best_value = -np.inf
@@ -94,6 +145,10 @@ class LSMCBenchmark:
                     np.array([price]),
                     current_step / max(horizon - 1, 1),
                     self.storage_params.capacity,
+                    _calendar_angles(
+                        [start_date or date(2001, 1, 1)],
+                        current_step,
+                    ),
                 )
                 continuation = float((x @ coef).item())
             value = immediate + continuation
@@ -102,14 +157,28 @@ class LSMCBenchmark:
                 best_action = float(action)
         return best_action
 
-    def evaluate(self, paths: np.ndarray) -> dict[str, float]:
+    def evaluate(
+        self,
+        paths: np.ndarray,
+        start_dates: list[date] | None = None,
+    ) -> dict[str, float]:
         """Evaluates the fitted LSMC policy on fixed paths."""
+        if start_dates is None:
+            start_dates = [date(2001, 1, 1)] * len(paths)
+        if len(start_dates) != len(paths):
+            raise ValueError("start_dates must contain one date per path")
         returns = []
-        for path in paths:
+        for path, start_date in zip(paths, start_dates, strict=True):
             storage = self.storage_params.initial_inventory
             total = 0.0
             for step, price in enumerate(path):
-                action = self.predict_action(storage, float(price), step, len(path))
+                action = self.predict_action(
+                    storage,
+                    float(price),
+                    step,
+                    len(path),
+                    start_date,
+                )
                 executed = clip_storage_action(action, storage, self.storage_params)
                 storage += executed
                 total += -executed * float(price)

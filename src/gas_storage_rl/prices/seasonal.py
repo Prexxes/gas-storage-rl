@@ -15,6 +15,7 @@ def seasonal_log_curve(
     base_price: float = 50.0,
     amplitude: float = 0.25,
     phase: float = 0.0,
+    annual_period: int = 365,
 ) -> np.ndarray:
     """Creates a smooth deterministic seasonal log-price curve.
 
@@ -23,12 +24,13 @@ def seasonal_log_curve(
         base_price: Annual average spot price level.
         amplitude: Seasonal log-amplitude.
         phase: Phase shift in radians.
+        annual_period: Number of days in one seasonal cycle.
 
     Returns:
         Array of seasonal log-prices with shape ``(episode_length,)``.
     """
     days = np.arange(episode_length, dtype=np.float64)
-    seasonal = amplitude * np.cos(2.0 * np.pi * days / episode_length + phase)
+    seasonal = amplitude * np.cos(2.0 * np.pi * days / annual_period + phase)
     return np.log(base_price) + seasonal
 
 

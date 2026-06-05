@@ -54,7 +54,7 @@ def test_dataset_shapes() -> None:
             n_test_paths=4,
         )
     )
-    assert dataset["pretrain"].shape == (1, 5)
-    assert dataset["train"].shape == (2, 5)
-    assert dataset["validation"].shape == (3, 5)
-    assert dataset["test"].shape == (4, 5)
+    assert dataset["pretrain"].shape == (1, 9)
+    assert dataset["train"].shape == (2, 9)
+    assert dataset["validation"].shape == (3, 9)
+    assert dataset["test"].shape == (4, 9)
