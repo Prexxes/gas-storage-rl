@@ -93,18 +93,27 @@ The observation vector is:
 
 ```text
 [v_t / C, p_t / price_scale, sin(day_of_year), cos(day_of_year),
- (T - 1 - t) / (T - 1)]
+ (T - 1 - t) / (T - 1), v_target / C]
 ```
 
 The calendar features use the path's actual date when date metadata is
 available. Synthetic paths without date metadata start on January 1. The
 observation dtype is `np.float32`.
 
+Each episode starts with an inventory fraction drawn from a clipped normal
+distribution with mean `0.30` and standard deviation `0.05`. The episode target
+inventory equals that sampled initial inventory. Training environments draw a
+new value on every unconstrained reset. Pretraining and LSMC training use fixed
+stratified normal quantiles per path; validation, test, and historical backtest
+evaluation use fixed seeded samples. Perfect foresight, LSMC, and policy
+evaluation receive the same per-episode initial and target inventories.
+
 Synthetic datasets store contiguous raw paths of length `2T - 1`. Training
 environments sample a start offset uniformly at each reset and expose the next
 `T` consecutive prices. Pretraining, validation, test, and benchmark runs use
 fixed seeded start offsets per path. LSMC continuation regressions include
-calendar sine and cosine terms and their interactions with normalized price.
+calendar sine and cosine terms, the target inventory, and interactions with
+normalized price and current inventory.
 
 ## Benchmarks
 

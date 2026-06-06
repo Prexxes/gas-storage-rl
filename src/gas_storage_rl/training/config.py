@@ -45,6 +45,13 @@ def build_environment(
                 env_config["episode_length"] - 1,
             )
         ),
+        storage_capacity=float(env_config["capacity"]),
+        initial_inventory_mean_fraction=float(
+            env_config.get("initial_inventory_mean_fraction", 0.30)
+        ),
+        initial_inventory_std_fraction=float(
+            env_config.get("initial_inventory_std_fraction", 0.05)
+        ),
         params=price_config,
     )
     dataset = load_or_generate_price_dataset(
@@ -75,6 +82,12 @@ def build_environment(
         "penalty_factor": float(env_config.get("penalty_factor", 0.5)),
         "feasibility_penalty_factor": float(
             env_config.get("feasibility_penalty_factor", 0.5)
+        ),
+        "initial_inventory_mean_fraction": float(
+            env_config.get("initial_inventory_mean_fraction", 0.30)
+        ),
+        "initial_inventory_std_fraction": float(
+            env_config.get("initial_inventory_std_fraction", 0.05)
         ),
         "seed": int(seeds.get("env_seed", 0)),
     }

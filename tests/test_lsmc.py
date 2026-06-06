@@ -28,4 +28,16 @@ def test_lsmc_accepts_path_specific_calendar_dates() -> None:
     metrics = lsmc.evaluate(paths, start_dates)
 
     assert "mean_return_raw" in metrics
-    assert lsmc.coefficients[0].shape == (11,)
+    assert lsmc.coefficients[0].shape == (15,)
+
+
+def test_lsmc_accepts_path_specific_initial_and_target_inventories() -> None:
+    """LSMC fits and evaluates one model across inventory targets."""
+    paths = np.array([[10.0, 20.0, 30.0], [30.0, 20.0, 10.0]], dtype=np.float32)
+    inventories = np.array([0.4, 1.2])
+    lsmc = LSMCBenchmark(StorageParams(capacity=2.0), lambda_terminal=10.0)
+
+    lsmc.fit(paths, initial_inventories=inventories)
+    metrics = lsmc.evaluate(paths, initial_inventories=inventories)
+
+    assert "mean_return_raw" in metrics

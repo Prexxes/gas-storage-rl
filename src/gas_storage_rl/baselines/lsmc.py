@@ -16,10 +16,12 @@ def _features(
     time_fraction: float,
     capacity: float,
     calendar_angles: np.ndarray,
+    target_inventory: np.ndarray,
 ) -> np.ndarray:
     """Builds polynomial regression features up to degree two."""
     normalized_storage = storage / capacity
     normalized_price = price / np.maximum(np.mean(price), 1e-8)
+    normalized_target = target_inventory / capacity
     time = np.full_like(normalized_storage, time_fraction, dtype=np.float64)
     sin_day = np.sin(calendar_angles)
     cos_day = np.cos(calendar_angles)
@@ -32,6 +34,10 @@ def _features(
             normalized_storage**2,
             normalized_price**2,
             normalized_storage * normalized_price,
+            normalized_target,
+            normalized_target**2,
+            normalized_storage * normalized_target,
+            normalized_price * normalized_target,
             sin_day,
             cos_day,
             normalized_price * sin_day,
@@ -72,6 +78,8 @@ class LSMCBenchmark:
         self,
         train_paths: np.ndarray,
         start_dates: list[date] | None = None,
+        initial_inventories: np.ndarray | None = None,
+        target_inventories: np.ndarray | None = None,
     ) -> "LSMCBenchmark":
         """Fits continuation value regressions on training paths."""
         n_paths, horizon = train_paths.shape
@@ -79,10 +87,19 @@ class LSMCBenchmark:
             start_dates = [date(2001, 1, 1)] * n_paths
         if len(start_dates) != n_paths:
             raise ValueError("start_dates must contain one date per path")
-        storage = np.zeros(n_paths, dtype=np.float64)
+        initial_values = _inventory_values(
+            initial_inventories,
+            n_paths,
+            self.storage_params.initial_inventory,
+        )
+        target_values = (
+            initial_values
+            if target_inventories is None
+            else _inventory_values(target_inventories, n_paths, 0.0)
+        )
+        storage = initial_values.copy()
         # A simple rollout state proxy keeps this MVP small and reproducible.
         values_next = np.zeros(n_paths, dtype=np.float64)
-        terminal_target = self.storage_params.target_terminal_inventory
         for step in reversed(range(horizon)):
             price = train_paths[:, step]
             candidates = []
@@ -98,7 +115,7 @@ class LSMCBenchmark:
                 reward = -executed * price
                 if step == horizon - 1:
                     reward -= self.lambda_terminal * np.abs(
-                        level_next - terminal_target
+                        level_next - target_values
                     )
                 candidates.append(reward + values_next)
                 next_levels.append(level_next)
@@ -109,6 +126,7 @@ class LSMCBenchmark:
                 step / max(horizon - 1, 1),
                 self.storage_params.capacity,
                 _calendar_angles(start_dates, step),
+                target_values,
             )
             self.coefficients[step] = np.linalg.lstsq(x, best_values, rcond=None)[0]
             best_action_index = np.argmax(np.vstack(candidates), axis=0)
@@ -125,8 +143,14 @@ class LSMCBenchmark:
         current_step: int,
         horizon: int,
         start_date: date | None = None,
+        target_inventory: float | None = None,
     ) -> float:
         """Chooses the best grid action using fitted continuation estimates."""
+        target = (
+            self.storage_params.target_terminal_inventory
+            if target_inventory is None
+            else float(target_inventory)
+        )
         best_action = 0.0
         best_value = -np.inf
         for action in self.action_grid:
@@ -135,7 +159,7 @@ class LSMCBenchmark:
             immediate = -executed * price
             if current_step == horizon - 1:
                 immediate -= self.lambda_terminal * abs(
-                    next_level - self.storage_params.target_terminal_inventory
+                    next_level - target
                 )
             coef = self.coefficients.get(current_step)
             continuation = 0.0
@@ -149,6 +173,7 @@ class LSMCBenchmark:
                         [start_date or date(2001, 1, 1)],
                         current_step,
                     ),
+                    np.array([target]),
                 )
                 continuation = float((x @ coef).item())
             value = immediate + continuation
@@ -161,15 +186,33 @@ class LSMCBenchmark:
         self,
         paths: np.ndarray,
         start_dates: list[date] | None = None,
+        initial_inventories: np.ndarray | None = None,
+        target_inventories: np.ndarray | None = None,
     ) -> dict[str, float]:
         """Evaluates the fitted LSMC policy on fixed paths."""
         if start_dates is None:
             start_dates = [date(2001, 1, 1)] * len(paths)
         if len(start_dates) != len(paths):
             raise ValueError("start_dates must contain one date per path")
+        initial_values = _inventory_values(
+            initial_inventories,
+            len(paths),
+            self.storage_params.initial_inventory,
+        )
+        target_values = (
+            initial_values
+            if target_inventories is None
+            else _inventory_values(target_inventories, len(paths), 0.0)
+        )
         returns = []
-        for path, start_date in zip(paths, start_dates, strict=True):
-            storage = self.storage_params.initial_inventory
+        for path, start_date, initial, target in zip(
+            paths,
+            start_dates,
+            initial_values,
+            target_values,
+            strict=True,
+        ):
+            storage = float(initial)
             total = 0.0
             for step, price in enumerate(path):
                 action = self.predict_action(
@@ -178,13 +221,14 @@ class LSMCBenchmark:
                     step,
                     len(path),
                     start_date,
+                    float(target),
                 )
                 executed = clip_storage_action(action, storage, self.storage_params)
                 storage += executed
                 total += -executed * float(price)
                 if step == len(path) - 1:
                     total -= self.lambda_terminal * abs(
-                        storage - self.storage_params.target_terminal_inventory
+                        storage - target
                     )
             returns.append(total)
         return {
@@ -192,3 +236,17 @@ class LSMCBenchmark:
             "std_return_raw": float(np.std(returns)),
             "median_return_raw": float(np.median(returns)),
         }
+
+
+def _inventory_values(
+    values: np.ndarray | None,
+    n_paths: int,
+    default: float,
+) -> np.ndarray:
+    """Returns a validated inventory vector for path-wise LSMC state."""
+    if values is None:
+        return np.full(n_paths, default, dtype=np.float64)
+    array = np.asarray(values, dtype=np.float64)
+    if array.shape != (n_paths,):
+        raise ValueError("Inventory values must contain one value per path")
+    return array

@@ -175,6 +175,8 @@ def test_main_can_log_perfect_foresight_trajectories(
     assert rows[0]["start_date"] == "2024-02-01"
     assert rows[0]["end_date"] == "2024-02-03"
     assert rows[0]["prices"] == [11.0, 21.0, 31.0]
+    assert rows[0]["initial_inventory"] == 0.0
+    assert rows[0]["target_inventory"] == 0.0
     assert len(rows[0]["actions"]) == 3
     assert len(rows[0]["storage_levels"]) == 4
     assert "objective_value" in rows[0]

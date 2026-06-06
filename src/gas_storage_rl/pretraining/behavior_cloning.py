@@ -71,6 +71,9 @@ def load_trajectory_samples(
             prices = np.asarray(trajectory["prices"], dtype=np.float32)
             storage_levels = np.asarray(trajectory["storage_levels"], dtype=np.float32)
             path_actions = np.asarray(trajectory["actions"], dtype=np.float32)
+            target_inventory = float(
+                trajectory.get("target_inventory", storage_levels[0])
+            )
             horizon = len(path_actions)
             denominator = max(horizon - 1, 1)
             start_date_value = trajectory.get("start_date")
@@ -95,6 +98,7 @@ def load_trajectory_samples(
                         float(np.sin(day_angle)),
                         float(np.cos(day_angle)),
                         float((horizon - 1 - step) / denominator),
+                        float(target_inventory / capacity),
                     ]
                 )
                 actions.append([float(path_actions[step])])

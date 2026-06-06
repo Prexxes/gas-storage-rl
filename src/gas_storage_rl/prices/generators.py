@@ -29,7 +29,21 @@ class PriceGeneratorConfig:
     n_test_paths: int = 1000
     dataset_seed: int = 123
     max_start_offset: int | None = None
+    storage_capacity: float = 1.0
+    initial_inventory_mean_fraction: float = 0.30
+    initial_inventory_std_fraction: float = 0.05
     params: dict[str, Any] = field(default_factory=default_price_parameters)
+
+    def __post_init__(self) -> None:
+        """Validates rolling-window and inventory-distribution parameters."""
+        if self.storage_capacity <= 0.0:
+            raise ValueError("storage_capacity must be positive")
+        if not 0.0 <= self.initial_inventory_mean_fraction <= 1.0:
+            raise ValueError("initial_inventory_mean_fraction must be in [0, 1]")
+        if self.initial_inventory_std_fraction < 0.0:
+            raise ValueError("initial_inventory_std_fraction must be non-negative")
+        if self.max_start_offset is not None and self.max_start_offset < 0:
+            raise ValueError("max_start_offset must be non-negative")
 
     @property
     def simulation_length(self) -> int:

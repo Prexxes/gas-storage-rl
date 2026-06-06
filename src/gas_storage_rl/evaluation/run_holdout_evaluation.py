@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from gas_storage_rl.data.path_dataset import (
     PathDataset,
     load_or_generate_historical_backtest_dataset,
@@ -67,6 +69,16 @@ def _build_backtest_evaluation_dataset(
         backtest_start_date=historical_config.get("backtest_start_date", "2025-01-01"),
         daily_price_column=historical_config.get("daily_backtest_price_column"),
     )
+    env_config = config["environment_config"]
+    rng = np.random.default_rng(int(config["seeds"]["eval_seed"]) + 5_000_003)
+    backtest_fractions = rng.normal(
+        float(env_config.get("initial_inventory_mean_fraction", 0.30)),
+        float(env_config.get("initial_inventory_std_fraction", 0.05)),
+        size=len(backtest_dataset.get_paths("backtest")),
+    )
+    backtest_inventories = (
+        np.clip(backtest_fractions, 0.0, 1.0) * float(env_config["capacity"])
+    )
     return PathDataset(
         {
             "train": synthetic_dataset.get_paths("train"),
@@ -78,6 +90,13 @@ def _build_backtest_evaluation_dataset(
         },
         {
             "backtest": backtest_dataset.date_ranges_by_split["backtest"],
+        },
+        initial_inventories_by_split={
+            "train": synthetic_dataset.get_initial_inventories(
+                "train",
+                float(env_config.get("initial_inventory", 0.0)),
+            ),
+            "backtest": backtest_inventories,
         },
     )
 

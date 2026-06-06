@@ -37,13 +37,13 @@ def test_gymnasium_reset_step_api_shape_and_dtype() -> None:
     """Reset and step follow the Gymnasium API."""
     env = make_env()
     obs, info = env.reset(seed=1)
-    assert obs.shape == (5,)
+    assert obs.shape == (6,)
     assert obs.dtype == np.float32
     assert info["path_id"] == 0
     obs, reward, terminated, truncated, info = env.step(
         np.array([0.0], dtype=np.float32)
     )
-    assert obs.shape == (5,)
+    assert obs.shape == (6,)
     assert isinstance(reward, float)
     assert not terminated
     assert not truncated
@@ -82,17 +82,43 @@ def test_terminal_penalty_and_scaled_reward() -> None:
 def test_feasibility_penalty_for_inventory_that_cannot_be_withdrawn() -> None:
     """Non-terminal shaped reward penalizes inventory above withdrawable volume."""
     env = make_env(
-        prices=np.array([[10.0, 10.0, 10.0]], dtype=np.float32),
-        storage_params=StorageParams(capacity=5.0, initial_inventory=4.0),
+        prices=np.array([[10.0, 10.0]], dtype=np.float32),
+        storage_params=StorageParams(
+            capacity=5.0,
+            withdrawal_rate=0.0,
+            initial_inventory=4.0,
+        ),
         feasibility_penalty_factor=1.0,
     )
     env.reset()
-    _, reward, terminated, _, info = env.step([0.0])
+    _, reward, terminated, _, info = env.step([1.0])
     assert not terminated
-    assert info["max_withdrawable_remaining"] == 2.0
-    assert info["excess_inventory"] == 2.0
-    assert info["feasibility_penalty"] == -20.0
-    assert reward == -2.0
+    assert info["max_withdrawable_remaining"] == 0.0
+    assert info["excess_inventory"] == 1.0
+    assert info["feasibility_penalty"] == -10.0
+    assert reward == -1.0
+
+
+def test_feasibility_penalty_for_inventory_that_cannot_be_injected() -> None:
+    """Non-terminal reward penalizes inventory below the reachable target."""
+    env = make_env(
+        prices=np.array([[10.0, 10.0]], dtype=np.float32),
+        storage_params=StorageParams(
+            capacity=5.0,
+            injection_rate=0.0,
+            initial_inventory=4.0,
+        ),
+        feasibility_penalty_factor=1.0,
+    )
+    env.reset(options={"initial_inventory": 4.0})
+
+    _, reward, terminated, _, info = env.step([-1.0])
+
+    assert not terminated
+    assert info["max_injectable_remaining"] == 0.0
+    assert info["inventory_shortfall"] == 1.0
+    assert info["feasibility_penalty"] == -10.0
+    assert reward == -1.0
 
 
 def test_normalized_observation_values() -> None:
@@ -101,7 +127,7 @@ def test_normalized_observation_values() -> None:
     obs, _ = env.reset()
     assert np.allclose(
         obs,
-        np.array([0.0, 1.0, 0.0, 1.0, 1.0], dtype=np.float32),
+        np.array([0.0, 1.0, 0.0, 1.0, 1.0, 0.0], dtype=np.float32),
     )
 
 
@@ -181,3 +207,46 @@ def test_explicit_path_id_uses_fixed_start_index() -> None:
 
     assert info["start_index"] == 3
     assert obs[1] == 4.0
+
+
+def test_training_reset_samples_initial_inventory_and_sets_target() -> None:
+    """Training samples one inventory and uses it as the episode target."""
+    env = make_env()
+    env.fixed_path_id = None
+    env.initial_inventory_mean_fraction = 0.30
+    env.initial_inventory_std_fraction = 0.05
+
+    obs, info = env.reset(seed=11)
+
+    assert 0.0 <= info["initial_inventory"] <= 2.0
+    assert info["initial_inventory"] != 0.0
+    assert info["target_terminal_inventory"] == info["initial_inventory"]
+    expected_fraction = info["initial_inventory"] / 2.0
+    assert np.isclose(obs[0], expected_fraction)
+    assert np.isclose(obs[5], expected_fraction)
+
+
+def test_fixed_inventory_is_used_for_evaluation_path() -> None:
+    """Evaluation uses the inventory stored for the selected path."""
+    prices = np.array([[10.0, 20.0, 30.0]], dtype=np.float32)
+    dataset = PathDataset(
+        {"train": prices, "validation": prices},
+        {"train": 1, "validation": 2},
+        initial_inventories_by_split={
+            "train": np.array([0.5]),
+            "validation": np.array([0.8]),
+        },
+    )
+    env = GasStorageEnv(
+        dataset,
+        "validation",
+        StorageParams(capacity=2.0),
+        price_scale=10.0,
+    )
+
+    obs, info = env.reset(options={"path_id": 0})
+
+    assert info["initial_inventory"] == 0.8
+    assert info["target_terminal_inventory"] == 0.8
+    assert np.isclose(obs[0], 0.4)
+    assert np.isclose(obs[5], 0.4)

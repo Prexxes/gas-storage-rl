@@ -23,7 +23,7 @@ def test_rule_based_policy_decodes_remaining_time() -> None:
         capacity=5.0,
         episode_length=4,
     )
-    observation = np.array([0.6, 0.4, 0.0, 1.0, 0.0], dtype=np.float32)
+    observation = np.array([0.6, 0.4, 0.0, 1.0, 0.0, 0.2], dtype=np.float32)
 
     action, _ = policy.predict(observation)
 

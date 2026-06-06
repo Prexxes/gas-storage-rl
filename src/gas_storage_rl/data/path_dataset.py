@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy.stats import norm
 
 from gas_storage_rl.prices.historical_data import (
     assert_date_range,
@@ -32,6 +33,7 @@ class PathDataset:
     episode_length_override: int | None = None
     start_indices_by_split: dict[str, np.ndarray] | None = None
     base_dates_by_split: dict[str, str] | None = None
+    initial_inventories_by_split: dict[str, np.ndarray] | None = None
 
     def get_paths(self, split: str) -> np.ndarray:
         """Returns fixed episode windows for a split."""
@@ -97,6 +99,16 @@ class PathDataset:
                 ]
         return [date(2001, 1, 1)] * len(self.paths_by_split[split])
 
+    def get_initial_inventories(
+        self,
+        split: str,
+        default: float = 0.0,
+    ) -> np.ndarray:
+        """Returns deterministic per-path initial and target inventories."""
+        if self.initial_inventories_by_split is None:
+            return np.full(len(self.paths_by_split[split]), default, dtype=np.float64)
+        return self.initial_inventories_by_split[split]
+
     @property
     def episode_length(self) -> int:
         """Returns the number of decision steps per path."""
@@ -125,6 +137,9 @@ def compute_dataset_hash(config: PriceGeneratorConfig) -> str:
         "n_validation_paths": config.n_validation_paths,
         "n_test_paths": config.n_test_paths,
         "dataset_seed": config.dataset_seed,
+        "storage_capacity": config.storage_capacity,
+        "initial_inventory_mean_fraction": config.initial_inventory_mean_fraction,
+        "initial_inventory_std_fraction": config.initial_inventory_std_fraction,
         "price_process_config": config.params,
     }
     serialized = json.dumps(payload, sort_keys=True)
@@ -190,6 +205,13 @@ def load_or_generate_price_dataset(
             split: np.asarray(metadata["start_indices_by_split"][split], dtype=np.int64)
             for split in seeds_by_split
         }
+        initial_inventories_by_split = {
+            split: np.asarray(
+                metadata["initial_inventories_by_split"][split],
+                dtype=np.float64,
+            )
+            for split in seeds_by_split
+        }
         return PathDataset(
             paths_by_split,
             seeds_by_split,
@@ -197,6 +219,7 @@ def load_or_generate_price_dataset(
             episode_length_override=config.episode_length,
             start_indices_by_split=start_indices_by_split,
             base_dates_by_split=metadata["base_dates_by_split"],
+            initial_inventories_by_split=initial_inventories_by_split,
         )
 
     paths_by_split = generate_dataset(config)
@@ -206,6 +229,11 @@ def load_or_generate_price_dataset(
         config.episode_length,
         start_indices_by_split,
         base_dates_by_split,
+    )
+    initial_inventories_by_split = _generate_initial_inventories(
+        config,
+        paths_by_split,
+        seeds_by_split,
     )
     if use_cache:
         dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -220,6 +248,7 @@ def load_or_generate_price_dataset(
             start_indices_by_split,
             base_dates_by_split,
             date_ranges_by_split,
+            initial_inventories_by_split,
         )
     return PathDataset(
         paths_by_split,
@@ -228,6 +257,7 @@ def load_or_generate_price_dataset(
         episode_length_override=config.episode_length,
         start_indices_by_split=start_indices_by_split,
         base_dates_by_split=base_dates_by_split,
+        initial_inventories_by_split=initial_inventories_by_split,
     )
 
 
@@ -240,6 +270,7 @@ def _write_metadata(
     start_indices_by_split: dict[str, np.ndarray],
     base_dates_by_split: dict[str, str],
     date_ranges_by_split: dict[str, list[dict[str, str]]],
+    initial_inventories_by_split: dict[str, np.ndarray],
 ) -> None:
     """Writes cache metadata."""
     metadata: dict[str, Any] = {
@@ -252,6 +283,9 @@ def _write_metadata(
         "n_validation_paths": config.n_validation_paths,
         "n_test_paths": config.n_test_paths,
         "dataset_seed": config.dataset_seed,
+        "storage_capacity": config.storage_capacity,
+        "initial_inventory_mean_fraction": config.initial_inventory_mean_fraction,
+        "initial_inventory_std_fraction": config.initial_inventory_std_fraction,
         "seeds_by_split": seeds_by_split,
         "price_process_config": config.params,
         "start_indices_by_split": {
@@ -260,6 +294,10 @@ def _write_metadata(
         },
         "base_dates_by_split": base_dates_by_split,
         "date_ranges_by_split": date_ranges_by_split,
+        "initial_inventories_by_split": {
+            split: inventories.astype(float).tolist()
+            for split, inventories in initial_inventories_by_split.items()
+        },
         "shapes": {
             split: list(paths.shape)
             for split, paths in paths_by_split.items()
@@ -285,6 +323,43 @@ def _generate_start_indices(
         )
         for split, paths in paths_by_split.items()
     }
+
+
+def _generate_initial_inventories(
+    config: PriceGeneratorConfig,
+    paths_by_split: dict[str, np.ndarray],
+    seeds_by_split: dict[str, int],
+) -> dict[str, np.ndarray]:
+    """Generates fixed per-path initial inventories for non-training workflows."""
+    output = {}
+    for split, paths in paths_by_split.items():
+        rng = np.random.default_rng(seeds_by_split[split] + 5_000_003)
+        if config.initial_inventory_std_fraction == 0.0:
+            fractions = np.full(
+                len(paths),
+                config.initial_inventory_mean_fraction,
+                dtype=np.float64,
+            )
+        elif split in {"pretrain", "train"}:
+            probabilities = (np.arange(len(paths), dtype=np.float64) + 0.5) / len(
+                paths
+            )
+            fractions = norm.ppf(
+                probabilities,
+                loc=config.initial_inventory_mean_fraction,
+                scale=config.initial_inventory_std_fraction,
+            )
+            rng.shuffle(fractions)
+        else:
+            fractions = rng.normal(
+                loc=config.initial_inventory_mean_fraction,
+                scale=config.initial_inventory_std_fraction,
+                size=len(paths),
+            )
+        output[split] = (
+            np.clip(fractions, 0.0, 1.0) * config.storage_capacity
+        ).astype(np.float64)
+    return output
 
 
 def _build_date_ranges(

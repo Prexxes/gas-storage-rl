@@ -6,6 +6,8 @@ environment_config:
   withdrawal_rate: 1.0
   initial_inventory: 0.0
   target_terminal_inventory: 0.0
+  initial_inventory_mean_fraction: 0.30
+  initial_inventory_std_fraction: 0.05
   price_scale: 50.0
   reward_scale: 50.0
   penalty_factor: 0.5

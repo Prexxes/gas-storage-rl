@@ -24,14 +24,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_trajectory_samples_include_calendar_and_remaining_time(tmp_path) -> None:
-    """Trajectory observations use the five-feature time representation."""
+def test_trajectory_samples_include_calendar_target_and_remaining_time(tmp_path) -> None:
+    """Trajectory observations include calendar, remaining time, and target."""
     trajectory_path = tmp_path / "trajectory.jsonl"
     trajectory = {
         "start_date": "2025-06-06",
         "prices": [50.0, 45.0, 60.0],
         "actions": [1.0, 0.0, -1.0],
         "storage_levels": [0.0, 1.0, 1.0, 0.0],
+        "target_inventory": 0.5,
     }
     trajectory_path.write_text(json.dumps(trajectory) + "\n", encoding="utf-8")
 
@@ -42,9 +43,12 @@ def test_trajectory_samples_include_calendar_and_remaining_time(tmp_path) -> Non
     )
 
     angle = 2.0 * np.pi * (157 - 1) / 365
-    assert observations.shape == (3, 5)
+    assert observations.shape == (3, 6)
     assert actions.shape == (3, 1)
-    assert np.allclose(observations[0], [0.0, 1.0, np.sin(angle), np.cos(angle), 1.0])
+    assert np.allclose(
+        observations[0],
+        [0.0, 1.0, np.sin(angle), np.cos(angle), 1.0, 0.25],
+    )
     assert observations[-1, 4] == 0.0
 
 

@@ -15,3 +15,18 @@ def test_perfect_foresight_lp_feasible_and_respects_constraints() -> None:
     assert np.all(result.actions >= -1.0 - 1e-8)
     assert np.all(result.storage_levels <= 2.0 + 1e-8)
     assert np.all(result.storage_levels >= -1e-8)
+
+
+def test_perfect_foresight_uses_episode_initial_and_target_inventory() -> None:
+    """LP boundary conditions are specific to the evaluated episode."""
+    baseline = PerfectForesightBaseline(StorageParams(capacity=2.0), lambda_terminal=100.0)
+
+    result = baseline.solve_path(
+        np.array([100.0, 10.0]),
+        initial_inventory=1.0,
+        target_inventory=1.0,
+    )
+
+    assert result.success
+    assert np.isclose(result.storage_levels[0], 1.0)
+    assert np.isclose(result.storage_levels[-1], 1.0)

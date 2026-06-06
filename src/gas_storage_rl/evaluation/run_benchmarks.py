@@ -163,6 +163,8 @@ def run_benchmarks(
         train_paths,
         capacity=storage_params.capacity,
         episode_length=dataset.episode_length,
+        injection_rate=storage_params.injection_rate,
+        withdrawal_rate=storage_params.withdrawal_rate,
     )
     action_grid = np.asarray(
         config.get("evaluation_config", {}).get("lsmc_action_grid", [-1.0, 0.0, 1.0]),
@@ -172,7 +174,14 @@ def run_benchmarks(
         storage_params,
         train_env.lambda_terminal,
         action_grid=action_grid,
-    ).fit(train_paths, dataset.get_start_dates("train"))
+    ).fit(
+        train_paths,
+        dataset.get_start_dates("train"),
+        dataset.get_initial_inventories(
+            "train",
+            storage_params.initial_inventory,
+        ),
+    )
     perfect_foresight = PerfectForesightBaseline(
         storage_params,
         train_env.lambda_terminal,
@@ -190,21 +199,36 @@ def run_benchmarks(
         random_metrics, _ = evaluate_policy_on_paths(env, random_policy)
         rule_metrics, _ = evaluate_policy_on_paths(env, rule_policy)
         split_paths = dataset.get_paths(split)
+        split_inventories = dataset.get_initial_inventories(
+            split,
+            storage_params.initial_inventory,
+        )
         output["splits"][split] = {
             "random": random_metrics,
             "rule_based": rule_metrics,
             "lsmc": lsmc.evaluate(
                 split_paths,
                 dataset.get_start_dates(split),
+                split_inventories,
             ),
-            "perfect_foresight": perfect_foresight.evaluate_paths(split_paths),
+            "perfect_foresight": perfect_foresight.evaluate_paths(
+                split_paths,
+                split_inventories,
+                split_inventories,
+            ),
         }
         if write_perfect_foresight_trajectories:
             date_ranges = None
             if dataset.date_ranges_by_split is not None:
                 date_ranges = dataset.date_ranges_by_split.get(split)
             output["_perfect_foresight_trajectories"][split] = (
-                perfect_foresight.solve_paths(split_paths, split, date_ranges)
+                perfect_foresight.solve_paths(
+                    split_paths,
+                    split,
+                    date_ranges,
+                    split_inventories,
+                    split_inventories,
+                )
             )
     return output
 

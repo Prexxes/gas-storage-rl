@@ -27,6 +27,8 @@ class GasStorageEnv(gym.Env):
         reward_scale: float | None = None,
         penalty_factor: float = 0.5,
         feasibility_penalty_factor: float = 0.5,
+        initial_inventory_mean_fraction: float | None = None,
+        initial_inventory_std_fraction: float = 0.0,
         fixed_path_id: int | None = None,
         seed: int | None = None,
     ) -> None:
@@ -39,6 +41,15 @@ class GasStorageEnv(gym.Env):
         self.reward_scale = float(reward_scale or price_scale)
         self.penalty_factor = float(penalty_factor)
         self.feasibility_penalty_factor = float(feasibility_penalty_factor)
+        self.initial_inventory_mean_fraction = initial_inventory_mean_fraction
+        self.initial_inventory_std_fraction = float(initial_inventory_std_fraction)
+        if (
+            self.initial_inventory_mean_fraction is not None
+            and not 0.0 <= self.initial_inventory_mean_fraction <= 1.0
+        ):
+            raise ValueError("initial_inventory_mean_fraction must be in [0, 1]")
+        if self.initial_inventory_std_fraction < 0.0:
+            raise ValueError("initial_inventory_std_fraction must be non-negative")
         self.fixed_path_id = fixed_path_id
         self.rng = np.random.default_rng(seed)
         self.episode_length = dataset.episode_length
@@ -48,8 +59,11 @@ class GasStorageEnv(gym.Env):
             self.feasibility_penalty_factor * self.mean_training_price
         )
 
-        high = np.array([np.inf, np.inf, 1.0, 1.0, 1.0], dtype=np.float32)
-        low = np.array([0.0, 0.0, -1.0, -1.0, 0.0], dtype=np.float32)
+        high = np.array(
+            [np.inf, np.inf, 1.0, 1.0, 1.0, 1.0],
+            dtype=np.float32,
+        )
+        low = np.array([0.0, 0.0, -1.0, -1.0, 0.0, 0.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
         self.action_space = spaces.Box(
             low=np.array([-1.0], dtype=np.float32),
@@ -58,7 +72,11 @@ class GasStorageEnv(gym.Env):
         )
         self.current_step = 0
         self.current_start_index = 0
-        self.storage_level = storage_params.initial_inventory
+        self.initial_inventory = float(storage_params.initial_inventory)
+        self.target_terminal_inventory = float(
+            storage_params.target_terminal_inventory
+        )
+        self.storage_level = self.initial_inventory
         self.current_path_id = 0
         self.current_path = self.dataset.get_path(split, 0)
 
@@ -74,7 +92,6 @@ class GasStorageEnv(gym.Env):
             self.rng = np.random.default_rng(seed)
         options = options or {}
         self.current_step = 0
-        self.storage_level = float(self.storage_params.initial_inventory)
         if "path_id" in options:
             self.current_path_id = int(options["path_id"])
         elif self.fixed_path_id is not None:
@@ -101,11 +118,39 @@ class GasStorageEnv(gym.Env):
             self.current_path_id,
             self.current_start_index,
         )
+        if "initial_inventory" in options:
+            initial_inventory = float(options["initial_inventory"])
+        elif (
+            self.split == "train"
+            and "path_id" not in options
+            and self.fixed_path_id is None
+            and self.initial_inventory_mean_fraction is not None
+        ):
+            inventory_fraction = self.rng.normal(
+                self.initial_inventory_mean_fraction,
+                self.initial_inventory_std_fraction,
+            )
+            initial_inventory = float(
+                np.clip(inventory_fraction, 0.0, 1.0)
+                * self.storage_params.capacity
+            )
+        else:
+            initial_inventory = float(
+                self.dataset.get_initial_inventories(
+                    self.split,
+                    default=self.storage_params.initial_inventory,
+                )[self.current_path_id]
+            )
+        self.initial_inventory = initial_inventory
+        self.target_terminal_inventory = initial_inventory
+        self.storage_level = initial_inventory
         return self._observation(), {
             "path_id": self.current_path_id,
             "split": self.split,
             "current_step": self.current_step,
             "start_index": self.current_start_index,
+            "initial_inventory": self.initial_inventory,
+            "target_terminal_inventory": self.target_terminal_inventory,
         }
 
     def step(
@@ -130,11 +175,11 @@ class GasStorageEnv(gym.Env):
         mark_to_market_reward = 0.0
         feasibility_penalty = 0.0
         excess_inventory = 0.0
+        inventory_shortfall = 0.0
         max_withdrawable_remaining = 0.0
+        max_injectable_remaining = 0.0
         if is_final:
-            deviation = abs(
-                self.storage_level - self.storage_params.target_terminal_inventory
-            )
+            deviation = abs(self.storage_level - self.target_terminal_inventory)
             terminal_penalty = -self.lambda_terminal * deviation
             shaped_reward_raw = (
                 raw_cashflow + terminal_penalty - self.storage_level * price
@@ -145,13 +190,24 @@ class GasStorageEnv(gym.Env):
             max_withdrawable_remaining = (
                 remaining_steps * self.storage_params.withdrawal_rate
             )
+            max_injectable_remaining = (
+                remaining_steps * self.storage_params.injection_rate
+            )
             excess_inventory = max(
                 0.0,
                 self.storage_level
-                - self.storage_params.target_terminal_inventory
+                - self.target_terminal_inventory
                 - max_withdrawable_remaining,
             )
-            feasibility_penalty = -self.lambda_feasibility * excess_inventory
+            inventory_shortfall = max(
+                0.0,
+                self.target_terminal_inventory
+                - self.storage_level
+                - max_injectable_remaining,
+            )
+            feasibility_penalty = -self.lambda_feasibility * (
+                excess_inventory + inventory_shortfall
+            )
             mark_to_market_reward = self.storage_level * (next_price - price)
             shaped_reward_raw = mark_to_market_reward + feasibility_penalty
 
@@ -162,7 +218,8 @@ class GasStorageEnv(gym.Env):
             "executed_action": executed_action,
             "storage_level": self.storage_level,
             "previous_storage_level": previous_level,
-            "target_terminal_inventory": self.storage_params.target_terminal_inventory,
+            "initial_inventory": self.initial_inventory,
+            "target_terminal_inventory": self.target_terminal_inventory,
             "price": price,
             "reward_scale": self.reward_scale,
             "raw_cashflow": raw_cashflow,
@@ -174,7 +231,9 @@ class GasStorageEnv(gym.Env):
             "mark_to_market_reward": mark_to_market_reward,
             "feasibility_penalty": feasibility_penalty,
             "excess_inventory": excess_inventory,
+            "inventory_shortfall": inventory_shortfall,
             "max_withdrawable_remaining": max_withdrawable_remaining,
+            "max_injectable_remaining": max_injectable_remaining,
             "current_step": self.current_step,
             "start_index": self.current_start_index,
             "path_id": self.current_path_id,
@@ -203,6 +262,7 @@ class GasStorageEnv(gym.Env):
                 np.sin(day_angle),
                 np.cos(day_angle),
                 remaining_time,
+                self.target_terminal_inventory / self.storage_params.capacity,
             ],
             dtype=np.float32,
         )

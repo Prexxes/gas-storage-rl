@@ -30,8 +30,26 @@ class PerfectForesightBaseline:
         self.storage_params = storage_params
         self.lambda_terminal = float(lambda_terminal)
 
-    def solve_path(self, prices: np.ndarray) -> PerfectForesightResult:
+    def solve_path(
+        self,
+        prices: np.ndarray,
+        initial_inventory: float | None = None,
+        target_inventory: float | None = None,
+    ) -> PerfectForesightResult:
         """Solves the finite-horizon linear program for one path."""
+        initial = (
+            self.storage_params.initial_inventory
+            if initial_inventory is None
+            else float(initial_inventory)
+        )
+        if target_inventory is None:
+            target = (
+                self.storage_params.target_terminal_inventory
+                if initial_inventory is None
+                else initial
+            )
+        else:
+            target = float(target_inventory)
         horizon = len(prices)
         n_actions = horizon
         n_levels = horizon + 1
@@ -55,7 +73,7 @@ class PerfectForesightBaseline:
         row = np.zeros(n_variables)
         row[n_actions] = 1.0
         a_eq.append(row)
-        b_eq.append(self.storage_params.initial_inventory)
+        b_eq.append(initial)
         for step in range(horizon):
             row = np.zeros(n_variables)
             row[n_actions + step + 1] = 1.0
@@ -66,7 +84,6 @@ class PerfectForesightBaseline:
 
         a_ub = []
         b_ub = []
-        target = self.storage_params.target_terminal_inventory
         row = np.zeros(n_variables)
         row[n_actions + horizon] = 1.0
         row[d_index] = -1.0
@@ -106,9 +123,32 @@ class PerfectForesightBaseline:
             success=True,
         )
 
-    def evaluate_paths(self, paths: np.ndarray) -> dict[str, float]:
+    def evaluate_paths(
+        self,
+        paths: np.ndarray,
+        initial_inventories: np.ndarray | None = None,
+        target_inventories: np.ndarray | None = None,
+    ) -> dict[str, float]:
         """Evaluates the upper bound over multiple known paths."""
-        values = [self.solve_path(path).objective_value for path in paths]
+        initial_values = _inventory_values(
+            initial_inventories,
+            len(paths),
+            self.storage_params.initial_inventory,
+        )
+        target_values = (
+            initial_values
+            if target_inventories is None
+            else _inventory_values(target_inventories, len(paths), 0.0)
+        )
+        values = [
+            self.solve_path(path, initial, target).objective_value
+            for path, initial, target in zip(
+                paths,
+                initial_values,
+                target_values,
+                strict=True,
+            )
+        ]
         return {
             "mean_return_raw": float(np.mean(values)),
             "median_return_raw": float(np.median(values)),
@@ -120,11 +160,25 @@ class PerfectForesightBaseline:
         paths: np.ndarray,
         split: str,
         date_ranges: list[dict[str, str]] | None = None,
+        initial_inventories: np.ndarray | None = None,
+        target_inventories: np.ndarray | None = None,
     ) -> list[dict[str, Any]]:
         """Solves and serializes perfect-foresight trajectories for fixed paths."""
+        initial_values = _inventory_values(
+            initial_inventories,
+            len(paths),
+            self.storage_params.initial_inventory,
+        )
+        target_values = (
+            initial_values
+            if target_inventories is None
+            else _inventory_values(target_inventories, len(paths), 0.0)
+        )
         trajectories = []
-        for path_id, prices in enumerate(paths):
-            result = self.solve_path(prices)
+        for path_id, (prices, initial, target) in enumerate(
+            zip(paths, initial_values, target_values, strict=True)
+        ):
+            result = self.solve_path(prices, initial, target)
             date_range = date_ranges[path_id] if date_ranges is not None else {}
             trajectories.append(
                 {
@@ -132,6 +186,8 @@ class PerfectForesightBaseline:
                     "path_id": path_id,
                     "start_date": date_range.get("start_date"),
                     "end_date": date_range.get("end_date"),
+                    "initial_inventory": float(initial),
+                    "target_inventory": float(target),
                     "prices": prices.astype(float).tolist(),
                     "actions": result.actions.astype(float).tolist(),
                     "storage_levels": result.storage_levels.astype(float).tolist(),
@@ -141,3 +197,17 @@ class PerfectForesightBaseline:
                 }
             )
         return trajectories
+
+
+def _inventory_values(
+    values: np.ndarray | None,
+    n_paths: int,
+    default: float,
+) -> np.ndarray:
+    """Returns a validated inventory vector for path-wise optimization."""
+    if values is None:
+        return np.full(n_paths, default, dtype=np.float64)
+    array = np.asarray(values, dtype=np.float64)
+    if array.shape != (n_paths,):
+        raise ValueError("Inventory values must contain one value per path")
+    return array

@@ -15,6 +15,7 @@ class RuleBasedPolicy:
     high_threshold: float
     capacity: float
     episode_length: int
+    injection_rate: float = 1.0
     withdrawal_rate: float = 1.0
     target_inventory: float = 0.0
 
@@ -24,6 +25,7 @@ class RuleBasedPolicy:
         training_prices: np.ndarray,
         capacity: float,
         episode_length: int,
+        injection_rate: float = 1.0,
         withdrawal_rate: float = 1.0,
         target_inventory: float = 0.0,
     ) -> "RuleBasedPolicy":
@@ -33,20 +35,31 @@ class RuleBasedPolicy:
             high_threshold=float(np.quantile(training_prices, 0.7)),
             capacity=capacity,
             episode_length=episode_length,
+            injection_rate=injection_rate,
             withdrawal_rate=withdrawal_rate,
             target_inventory=target_inventory,
         )
 
-    def act(self, storage_level: float, price: float, current_step: int) -> float:
+    def act(
+        self,
+        storage_level: float,
+        price: float,
+        current_step: int,
+        target_inventory: float | None = None,
+    ) -> float:
         """Returns a feasible rule action before environment clipping."""
+        target = self.target_inventory if target_inventory is None else target_inventory
         remaining_steps = max(self.episode_length - current_step - 1, 0)
-        excess_inventory = storage_level - self.target_inventory
+        excess_inventory = storage_level - target
         if excess_inventory > remaining_steps * self.withdrawal_rate:
             return -1.0
+        inventory_shortfall = target - storage_level
+        if inventory_shortfall > remaining_steps * self.injection_rate:
+            return 1.0
         if price > self.high_threshold and storage_level > 0.0:
             return -1.0
         safely_liquidatable = storage_level + 1.0 <= (
-            remaining_steps * self.withdrawal_rate + self.target_inventory
+            remaining_steps * self.withdrawal_rate + target
         )
         if price < self.low_threshold and safely_liquidatable:
             return 1.0
@@ -61,4 +74,11 @@ class RuleBasedPolicy:
         current_step = int(
             round((1.0 - remaining_time) * max(self.episode_length - 1, 0))
         )
-        return np.array([self.act(storage_level, price, current_step)], dtype=np.float32), None
+        target_inventory = float(observation[5] * self.capacity)
+        action = self.act(
+            storage_level,
+            price,
+            current_step,
+            target_inventory,
+        )
+        return np.array([action], dtype=np.float32), None
