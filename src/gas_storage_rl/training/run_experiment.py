@@ -14,6 +14,7 @@ from gas_storage_rl.agents.sb3_factory import make_sb3_agent
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
 from gas_storage_rl.logging.experiment_logger import ExperimentLogger
+from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.training.callbacks import TrainingLoggingCallback
 from gas_storage_rl.training.config import build_environment, load_config
 
@@ -46,6 +47,8 @@ def main() -> None:
 
     config = load_config(args.config)
     config["agent_config"]["algorithm_name"] = args.algorithm
+    progress = CliProgress("run_experiment", total=4)
+    progress.step(1, "building environment")
     dataset, storage_params, env_kwargs = build_environment(config)
     train_env = GasStorageEnv(dataset, "train", storage_params, **env_kwargs)
     eval_env = GasStorageEnv(dataset, "validation", storage_params, **env_kwargs)
@@ -53,6 +56,7 @@ def main() -> None:
     logger.write_json("metadata.json", logger.metadata())
 
     started = time.time()
+    progress.step(2, "creating agent")
     model = make_sb3_agent(
         args.algorithm,
         train_env,
@@ -69,18 +73,22 @@ def main() -> None:
 
     sb3_logger = configure(str(logger.run_dir / "sb3_logs"), ["csv"])
     model.set_logger(sb3_logger)
+    total_timesteps = int(config["training_config"]["total_timesteps"])
     callback = TrainingLoggingCallback(
         experiment_logger=logger,
         eval_env=eval_env,
         eval_freq=int(config["training_config"]["eval_freq"]),
         algorithm_name=args.algorithm,
         deterministic=bool(config["evaluation_config"].get("deterministic", True)),
+        total_timesteps=total_timesteps,
+        progress=CliProgress("training", total=total_timesteps),
     )
-    total_timesteps = int(config["training_config"]["total_timesteps"])
+    progress.step(3, f"training {total_timesteps} steps")
     model.learn(total_timesteps=total_timesteps, callback=callback)
     train_wall_time = time.time() - started
 
     eval_started = time.time()
+    progress.step(4, "final validation")
     validation_metrics, _ = evaluate_policy_on_paths(
         eval_env,
         model,
@@ -103,6 +111,7 @@ def main() -> None:
     }
     logger.write_json("final_summary.json", summary)
     model.save(logger.run_dir / "final_model")
+    progress.finish("done")
     print(json.dumps({"run_dir": str(logger.run_dir), **summary}, indent=2))
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from gas_storage_rl.data.path_dataset import (
 )
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
+from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.training.config import build_environment, load_config
 
 
@@ -26,16 +27,24 @@ def main() -> None:
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
+    progress = CliProgress("run_holdout_evaluation", total=5)
+    progress.step(1, "loading config")
     config = load_config(run_dir / "config.json")
     algorithm_name = config["agent_config"]["algorithm_name"]
+    progress.step(2, "building environment")
     dataset, storage_params, env_kwargs = build_environment(config)
 
     if args.split == "backtest":
+        progress.step(3, "building backtest dataset")
         dataset = _build_backtest_evaluation_dataset(config, dataset)
+    else:
+        progress.step(3, "using synthetic test split")
 
     env = GasStorageEnv(dataset, args.split, storage_params, **env_kwargs)
+    progress.step(4, "loading model")
     model = _load_model(algorithm_name, run_dir / "final_model", env)
     total_training_env_steps = int(config["training_config"]["total_timesteps"])
+    progress.step(5, f"evaluating split={args.split}")
     metrics, _ = evaluate_policy_on_paths(
         env,
         model,
@@ -48,6 +57,7 @@ def main() -> None:
     output_name = f"holdout_{args.split}_metrics.json"
     with (run_dir / output_name).open("w", encoding="utf-8") as file:
         json.dump(metrics, file, indent=2)
+    progress.finish("done")
     print(json.dumps({"output": str(run_dir / output_name), **metrics}, indent=2))
 
 

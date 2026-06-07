@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from gas_storage_rl.agents.sb3_factory import make_sb3_agent
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
+from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.training.config import build_environment, load_config
 
 
@@ -147,6 +148,7 @@ def train_behavior_cloning(
     batch_size: int,
     learning_rate: float,
     seed: int,
+    progress: CliProgress | None = None,
 ) -> list[dict[str, float | int]]:
     """Trains the model actor to imitate perfect-foresight actions."""
     torch.manual_seed(seed)
@@ -180,6 +182,8 @@ def train_behavior_cloning(
                 "n_samples": int(len(dataset)),
             }
         )
+        if progress is not None:
+            progress.update(epoch, f"loss={history[-1]['loss']:.6f}")
     return history
 
 
@@ -198,22 +202,28 @@ def run_pretraining(
     epochs: int = 10,
     batch_size: int = 256,
     learning_rate: float = 1e-3,
+    show_progress: bool = False,
 ) -> dict[str, Any]:
     """Runs behavior-cloning pretraining and persists artifacts."""
+    progress = CliProgress("behavior_cloning", total=5, enabled=show_progress)
     config["agent_config"]["algorithm_name"] = algorithm_name
+    progress.step(1, "building environment")
     dataset, storage_params, env_kwargs = build_environment(config)
     env = GasStorageEnv(dataset, "train", storage_params, **env_kwargs)
+    progress.step(2, "creating agent")
     model = make_sb3_agent(
         algorithm_name,
         env,
         config["agent_config"].get(algorithm_name, {}),
         seed=config["seeds"]["agent_seed"],
     )
+    progress.step(3, "loading trajectory samples")
     observations, actions = load_trajectory_samples(
         trajectory_path,
         capacity=storage_params.capacity,
         price_scale=float(env_kwargs["price_scale"]),
     )
+    progress.step(4, f"training {epochs} epochs on {len(observations)} samples")
     history = train_behavior_cloning(
         model,
         algorithm_name,
@@ -223,8 +233,10 @@ def run_pretraining(
         batch_size=batch_size,
         learning_rate=learning_rate,
         seed=int(config["seeds"]["agent_seed"]),
+        progress=CliProgress("behavior_cloning_epochs", total=epochs, enabled=show_progress),
     )
 
+    progress.step(5, "writing artifacts")
     hash_value = config_hash(config)
     base_dir = output_dir or config["logging_config"]["run_dir"]
     run_dir, run_id = create_pretraining_run_dir(
@@ -252,6 +264,7 @@ def run_pretraining(
     }
     write_json(run_dir / "metadata.json", metadata)
     write_json(run_dir / "training_history.json", history)
+    progress.finish("done")
     return {
         "run_dir": str(run_dir),
         "policy_state_dict": str(run_dir / "policy_state_dict.pt"),
@@ -284,6 +297,7 @@ def main() -> None:
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        show_progress=True,
     )
     print(json.dumps(summary, indent=2, default=_json_default))
 

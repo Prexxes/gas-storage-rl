@@ -11,6 +11,7 @@ from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
 from gas_storage_rl.evaluation.metrics import summarize_episode_infos
 from gas_storage_rl.logging.experiment_logger import ExperimentLogger
+from gas_storage_rl.logging.progress import CliProgress
 
 
 class TrainingLoggingCallback(BaseCallback):
@@ -24,6 +25,8 @@ class TrainingLoggingCallback(BaseCallback):
         algorithm_name: str,
         deterministic: bool = True,
         validation_path_ids: list[int] | None = None,
+        total_timesteps: int | None = None,
+        progress: CliProgress | None = None,
     ) -> None:
         """Initializes the callback."""
         super().__init__()
@@ -33,6 +36,8 @@ class TrainingLoggingCallback(BaseCallback):
         self.algorithm_name = algorithm_name
         self.deterministic = deterministic
         self.validation_path_ids = validation_path_ids
+        self.total_timesteps = total_timesteps
+        self.progress = progress
         self.best_validation_return = float("-inf")
         self.last_validation_step: int | None = None
         self.episode_infos: list[list[dict[str, Any]]] = [[]]
@@ -40,6 +45,8 @@ class TrainingLoggingCallback(BaseCallback):
 
     def _on_training_start(self) -> None:
         """Runs an initial validation before policy updates."""
+        if self.progress is not None:
+            self.progress.update(0, "initial validation")
         self._run_validation_if_due(force=True)
 
     def _on_step(self) -> bool:
@@ -53,7 +60,19 @@ class TrainingLoggingCallback(BaseCallback):
             if env_index < len(dones) and dones[env_index]:
                 self._log_completed_episode(env_index)
         self._run_validation_if_due()
+        if self.progress is not None and self.total_timesteps:
+            interval = max(1, self.total_timesteps // 100)
+            if (
+                self.num_timesteps == self.total_timesteps
+                or self.num_timesteps % interval == 0
+            ):
+                self.progress.update(self.num_timesteps, "training")
         return True
+
+    def _on_training_end(self) -> None:
+        """Marks CLI progress complete when training ends."""
+        if self.progress is not None:
+            self.progress.finish("training complete")
 
     def _ensure_episode_buffers(self, n_envs: int) -> None:
         """Ensures one info buffer exists per vectorized environment."""

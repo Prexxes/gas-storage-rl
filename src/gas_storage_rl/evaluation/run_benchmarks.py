@@ -22,6 +22,7 @@ from gas_storage_rl.baselines.random_policy import RandomPolicy
 from gas_storage_rl.baselines.rule_based_policy import RuleBasedPolicy
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
+from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.pretraining.behavior_cloning import trajectory_rows_to_samples
 from gas_storage_rl.training.config import build_environment, load_config
 
@@ -237,11 +238,18 @@ def run_benchmarks(
     splits: list[str],
     write_perfect_foresight_trajectories: bool = False,
     include_oracle_cloned_policy: bool = False,
+    show_progress: bool = False,
 ) -> dict[str, Any]:
     """Runs all benchmark policies and returns metrics by split."""
+    progress_total = 3 + len(splits) + int(include_oracle_cloned_policy)
+    progress = CliProgress("run_benchmarks", total=progress_total, enabled=show_progress)
+    progress_step = 1
+    progress.step(progress_step, "building environment")
     dataset, storage_params, env_kwargs = build_environment(config)
     validate_splits(dataset, splits)
 
+    progress_step += 1
+    progress.step(progress_step, "fitting train-calibrated baselines")
     train_paths = dataset.get_paths("train")
     train_env = GasStorageEnv(dataset, "train", storage_params, **env_kwargs)
     rule_policy = RuleBasedPolicy.from_training_prices(
@@ -274,6 +282,8 @@ def run_benchmarks(
     oracle_cloned_policy = None
     oracle_training_summary = None
     if include_oracle_cloned_policy:
+        progress_step += 1
+        progress.step(progress_step, "training oracle-cloned policy")
         oracle_cloned_policy, oracle_training_summary = fit_oracle_cloned_policy(
             dataset,
             storage_params,
@@ -292,6 +302,8 @@ def run_benchmarks(
     if write_perfect_foresight_trajectories:
         output["_perfect_foresight_trajectories"] = {}
     for split in splits:
+        progress_step += 1
+        progress.step(progress_step, f"evaluating split={split}")
         env = GasStorageEnv(dataset, split, storage_params, **env_kwargs)
         random_policy = RandomPolicy(seed=config["seeds"]["eval_seed"])
         random_metrics, _ = evaluate_policy_on_paths(env, random_policy)
@@ -337,6 +349,9 @@ def run_benchmarks(
                     split_inventories,
                 )
             )
+    progress_step += 1
+    progress.step(progress_step, "assembled metrics")
+    progress.finish("done")
     return output
 
 
@@ -440,6 +455,7 @@ def main() -> None:
         splits,
         write_perfect_foresight_trajectories=args.write_perfect_foresight_trajectories,
         include_oracle_cloned_policy=args.include_oracle_cloned_policy,
+        show_progress=True,
     )
     log_benchmark_results(
         output,
