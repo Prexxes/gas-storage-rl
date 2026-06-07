@@ -45,12 +45,34 @@ Historical backtest episodes are rolling windows over the held-out backtest CSV.
 
 ## Storage Dynamics
 
-For capacity `C`, inventory `v_t`, and requested action `u_t`, the executed action is:
+For capacity `C`, inventory `v_t`, requested action `u_t`, remaining decision steps
+after the action `r_t`, and target terminal inventory `v*`, the executed action is
+first bounded by physical rate and inventory constraints:
 
 ```text
-a_t = clip(u_t, max(-withdrawal_rate, -v_t), min(injection_rate, C - v_t))
+physical_lower = max(-withdrawal_rate, -v_t)
+physical_upper = min(injection_rate, C - v_t)
+```
+
+The action is also bounded so that `v_{t+1}` remains in the corridor from which
+`v*` can still be reached:
+
+```text
+min_reachable_level = max(0, v* - r_t injection_rate)
+max_reachable_level = min(C, v* + r_t withdrawal_rate)
+terminal_lower = min_reachable_level - v_t
+terminal_upper = max_reachable_level - v_t
+a_t = clip(
+    u_t,
+    max(physical_lower, terminal_lower),
+    min(physical_upper, terminal_upper),
+)
 v_{t+1} = v_t + a_t
 ```
+
+If a manually constructed state is already outside the terminal-feasible corridor
+and the combined bounds are empty, the physical rate and capacity constraints remain
+binding.
 
 The MVP sets efficiency to `1`, transaction costs to `0`, leakage to `0`, initial inventory to `0`, and target terminal inventory to `0`.
 
@@ -74,6 +96,10 @@ excess_inventory = max(
 feasibility_penalty = -lambda_feasibility * excess_inventory
 shaped_reward_t = mark_to_market_reward_t + feasibility_penalty
 ```
+
+The terminal-reachability action clip normally prevents positive
+`excess_inventory` and `inventory_shortfall`; the feasibility penalty remains as a
+diagnostic and fallback for already unreachable states.
 
 At the final decision step:
 

@@ -10,7 +10,11 @@ import numpy as np
 from gymnasium import spaces
 
 from gas_storage_rl.data.path_dataset import PathDataset
-from gas_storage_rl.envs.storage_dynamics import StorageParams, clip_storage_action
+from gas_storage_rl.envs.storage_dynamics import (
+    StorageParams,
+    clip_storage_action,
+    clip_storage_action_to_terminal_feasibility,
+)
 
 
 class GasStorageEnv(gym.Env):
@@ -161,10 +165,21 @@ class GasStorageEnv(gym.Env):
         requested_action = float(np.asarray(action, dtype=np.float32).reshape(-1)[0])
         requested_action = float(np.clip(requested_action, -1.0, 1.0))
         price = float(self.current_path[self.current_step])
-        executed_action = clip_storage_action(
+        rate_capacity_clipped_action = clip_storage_action(
             requested_action=requested_action,
             storage_level=self.storage_level,
             params=self.storage_params,
+        )
+        remaining_steps_after_action = self.episode_length - self.current_step - 1
+        executed_action = clip_storage_action_to_terminal_feasibility(
+            requested_action=requested_action,
+            storage_level=self.storage_level,
+            params=self.storage_params,
+            remaining_steps_after_action=remaining_steps_after_action,
+            target_inventory=self.target_terminal_inventory,
+        )
+        terminal_feasibility_clipped = (
+            abs(executed_action - rate_capacity_clipped_action) > 1e-8
         )
         previous_level = self.storage_level
         self.storage_level += executed_action
@@ -215,7 +230,9 @@ class GasStorageEnv(gym.Env):
         scaled_reward = shaped_reward_raw / self.reward_scale
         info = {
             "requested_action": requested_action,
+            "rate_capacity_clipped_action": rate_capacity_clipped_action,
             "executed_action": executed_action,
+            "terminal_feasibility_clipped": terminal_feasibility_clipped,
             "storage_level": self.storage_level,
             "previous_storage_level": previous_level,
             "initial_inventory": self.initial_inventory,

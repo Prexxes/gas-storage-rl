@@ -36,7 +36,7 @@ Historically calibrated synthetic paths support three environment variants:
 
 ## Storage Dynamics
 
-The storage level satisfies `0 <= v_t <= C`. The continuous action space is `Box(-1, 1, shape=(1,))`, where positive actions inject gas and negative actions withdraw gas. Executed actions are clipped by injection and withdrawal rates and by storage boundaries. The MVP uses efficiency `1`, transaction costs `0`, leakage `0`, and no volume-dependent rates.
+The storage level satisfies `0 <= v_t <= C`. The continuous action space is `Box(-1, 1, shape=(1,))`, where positive actions inject gas and negative actions withdraw gas. Executed actions are clipped by injection and withdrawal rates, storage boundaries, and terminal reachability. After each action, the remaining inventory must stay within the range from which the target terminal inventory can still be reached with the remaining injection and withdrawal rates. The MVP uses efficiency `1`, transaction costs `0`, leakage `0`, and no volume-dependent rates.
 
 ## Observation Space
 
@@ -70,6 +70,10 @@ excess_inventory = max(
 feasibility_penalty = -lambda_feasibility * excess_inventory
 shaped_reward_t = mark_to_market_reward_t + feasibility_penalty
 ```
+
+The terminal-reachability action clip normally prevents positive
+`excess_inventory` and `inventory_shortfall`; the feasibility penalty remains as a
+diagnostic and fallback for states that are already physically unreachable.
 
 At the final step a terminal inventory penalty is applied:
 
