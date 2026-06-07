@@ -117,7 +117,7 @@ normalized price and current inventory.
 
 ## Benchmarks
 
-Random policy samples uniformly from `[-1, 1]`. Rule-based policy uses training price quantiles with liquidation feasibility checks. LSMC fits continuation values backward on training paths using the discrete grid `[-1, 0, 1]`. Perfect foresight solves a deterministic linear program for each known path.
+Random policy samples uniformly from `[-1, 1]`. Rule-based policy uses training price quantiles with liquidation feasibility checks. LSMC fits continuation values backward on training paths using the discrete grid `[-1, 0, 1]`. Perfect foresight solves a deterministic linear program for each known path. The optional oracle-cloned policy trains a small observation-only neural policy on perfect-foresight actions from the `pretrain` and `train` splits, then reports the cloned policy only on `validation` and `test`.
 
 ## Perfect Foresight LP
 

@@ -91,6 +91,7 @@ Implemented benchmarks are:
 - `RuleBasedPolicy`: buys below the 30 percent training quantile, sells above the 70 percent quantile, and enforces safe liquidation near maturity.
 - `LSMCBenchmark`: Least-Squares Monte Carlo with action grid `[-1, 0, 1]` and polynomial continuation features.
 - `PerfectForesightBaseline`: deterministic upper bound solved with `scipy.optimize.linprog`.
+- `OracleClonedPolicy`: neural observation-only policy trained by supervised imitation of perfect-foresight actions from the `pretrain` and `train` splits, then reported only on `validation` and `test`.
 
 ## Algorithms
 
@@ -154,6 +155,19 @@ Perfect-foresight path-level trajectories can be logged explicitly:
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml --write-perfect-foresight-trajectories
+```
+
+The oracle-cloned neural benchmark is optional. It solves perfect-foresight
+trajectories internally for `pretrain` and `train`, fits a small MLP policy on the
+resulting observation/action pairs, and adds `oracle_cloned_policy` metrics only for
+requested `validation` and `test` splits:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks \
+  --config configs/debug.yaml \
+  --split validation \
+  --split test \
+  --include-oracle-cloned-policy
 ```
 
 For behavior-cloning pretraining, generate only the separate pretrain trajectories:

@@ -16,14 +16,18 @@ from typing import Any
 import numpy as np
 
 from gas_storage_rl.baselines.lsmc import LSMCBenchmark
+from gas_storage_rl.baselines.oracle_cloned_policy import OracleClonedPolicy
 from gas_storage_rl.baselines.perfect_foresight import PerfectForesightBaseline
 from gas_storage_rl.baselines.random_policy import RandomPolicy
 from gas_storage_rl.baselines.rule_based_policy import RuleBasedPolicy
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
+from gas_storage_rl.pretraining.behavior_cloning import trajectory_rows_to_samples
 from gas_storage_rl.training.config import build_environment, load_config
 
 DEFAULT_SPLITS = ("train", "validation")
+ORACLE_CLONING_TRAINING_SPLITS = ("pretrain", "train")
+ORACLE_CLONING_EVALUATION_SPLITS = {"validation", "test"}
 
 
 def config_hash(config: dict[str, Any]) -> str:
@@ -88,6 +92,7 @@ def benchmark_metadata(
     hash_value: str,
     splits: list[str],
     writes_perfect_foresight_trajectories: bool,
+    includes_oracle_cloned_policy: bool,
 ) -> dict[str, Any]:
     """Returns reproducibility metadata for a benchmark run."""
     try:
@@ -107,6 +112,7 @@ def benchmark_metadata(
         "writes_perfect_foresight_trajectories": (
             writes_perfect_foresight_trajectories
         ),
+        "includes_oracle_cloned_policy": includes_oracle_cloned_policy,
         "git_commit_hash": git_commit,
         "python_version": sys.version,
         "platform": platform.platform(),
@@ -147,11 +153,90 @@ def enrich_metrics(
     return enriched
 
 
+def _date_ranges_for_split(dataset: Any, split: str) -> list[dict[str, str]] | None:
+    """Returns serialized date ranges for a split when available."""
+    if dataset.date_ranges_by_split is None:
+        return None
+    return dataset.date_ranges_by_split.get(split)
+
+
+def fit_oracle_cloned_policy(
+    dataset: Any,
+    storage_params: Any,
+    env_kwargs: dict[str, Any],
+    perfect_foresight: PerfectForesightBaseline,
+    observation_dim: int,
+    config: dict[str, Any],
+) -> tuple[OracleClonedPolicy, dict[str, Any]]:
+    """Fits a policy on pretrain and train perfect-foresight trajectories."""
+    available = set(dataset.paths_by_split)
+    missing = [
+        split for split in ORACLE_CLONING_TRAINING_SPLITS if split not in available
+    ]
+    if missing:
+        raise ValueError(
+            "Oracle-cloned policy requires perfect-foresight training splits "
+            f"{list(ORACLE_CLONING_TRAINING_SPLITS)}. Missing: {missing}."
+        )
+
+    trajectories = []
+    trajectory_counts = {}
+    for split in ORACLE_CLONING_TRAINING_SPLITS:
+        split_paths = dataset.get_paths(split)
+        split_inventories = dataset.get_initial_inventories(
+            split,
+            storage_params.initial_inventory,
+        )
+        split_trajectories = perfect_foresight.solve_paths(
+            split_paths,
+            split,
+            _date_ranges_for_split(dataset, split),
+            split_inventories,
+            split_inventories,
+        )
+        trajectories.extend(split_trajectories)
+        trajectory_counts[split] = len(split_trajectories)
+
+    observations, actions = trajectory_rows_to_samples(
+        trajectories,
+        capacity=storage_params.capacity,
+        price_scale=float(env_kwargs.get("price_scale", 50.0)),
+    )
+    evaluation_config = config.get("evaluation_config", {})
+    seed = int(config["seeds"].get("agent_seed", config["seeds"]["eval_seed"]))
+    policy = OracleClonedPolicy(
+        observation_dim=observation_dim,
+        hidden_sizes=tuple(
+            evaluation_config.get("oracle_cloned_policy_hidden_sizes", [64, 64])
+        ),
+        seed=seed,
+        device=str(evaluation_config.get("oracle_cloned_policy_device", "cpu")),
+    )
+    history = policy.fit(
+        observations,
+        actions,
+        epochs=int(evaluation_config.get("oracle_cloned_policy_epochs", 20)),
+        batch_size=int(evaluation_config.get("oracle_cloned_policy_batch_size", 256)),
+        learning_rate=float(
+            evaluation_config.get("oracle_cloned_policy_learning_rate", 1e-3)
+        ),
+        seed=seed,
+    )
+    return policy, {
+        "training_splits": list(ORACLE_CLONING_TRAINING_SPLITS),
+        "trajectory_counts": trajectory_counts,
+        "n_samples": int(len(observations)),
+        "final_imitation_loss": float(history[-1]["loss"]),
+        "epochs": int(history[-1]["epoch"]),
+    }
+
+
 def run_benchmarks(
     config: dict[str, Any],
     config_name: str,
     splits: list[str],
     write_perfect_foresight_trajectories: bool = False,
+    include_oracle_cloned_policy: bool = False,
 ) -> dict[str, Any]:
     """Runs all benchmark policies and returns metrics by split."""
     dataset, storage_params, env_kwargs = build_environment(config)
@@ -186,11 +271,24 @@ def run_benchmarks(
         storage_params,
         train_env.lambda_terminal,
     )
+    oracle_cloned_policy = None
+    oracle_training_summary = None
+    if include_oracle_cloned_policy:
+        oracle_cloned_policy, oracle_training_summary = fit_oracle_cloned_policy(
+            dataset,
+            storage_params,
+            env_kwargs,
+            perfect_foresight,
+            int(train_env.observation_space.shape[0]),
+            config,
+        )
 
     output = {
         "config_name": config_name,
         "splits": {},
     }
+    if oracle_training_summary is not None:
+        output["oracle_cloned_policy_training"] = oracle_training_summary
     if write_perfect_foresight_trajectories:
         output["_perfect_foresight_trajectories"] = {}
     for split in splits:
@@ -217,15 +315,24 @@ def run_benchmarks(
                 split_inventories,
             ),
         }
+        if (
+            oracle_cloned_policy is not None
+            and split in ORACLE_CLONING_EVALUATION_SPLITS
+        ):
+            oracle_metrics, _ = evaluate_policy_on_paths(env, oracle_cloned_policy)
+            oracle_metrics["imitation_training_samples"] = float(
+                oracle_training_summary["n_samples"]
+            )
+            oracle_metrics["final_imitation_loss"] = float(
+                oracle_training_summary["final_imitation_loss"]
+            )
+            output["splits"][split]["oracle_cloned_policy"] = oracle_metrics
         if write_perfect_foresight_trajectories:
-            date_ranges = None
-            if dataset.date_ranges_by_split is not None:
-                date_ranges = dataset.date_ranges_by_split.get(split)
             output["_perfect_foresight_trajectories"][split] = (
                 perfect_foresight.solve_paths(
                     split_paths,
                     split,
-                    date_ranges,
+                    _date_ranges_for_split(dataset, split),
                     split_inventories,
                     split_inventories,
                 )
@@ -239,6 +346,7 @@ def log_benchmark_results(
     config_name: str,
     splits: list[str],
     write_perfect_foresight_trajectories: bool = False,
+    include_oracle_cloned_policy: bool = False,
 ) -> Path:
     """Persists benchmark metrics as config, metadata, JSON, and CSV files."""
     hash_value = config_hash(config)
@@ -256,6 +364,7 @@ def log_benchmark_results(
             hash_value,
             splits,
             write_perfect_foresight_trajectories,
+            include_oracle_cloned_policy,
         ),
     )
 
@@ -313,6 +422,14 @@ def main() -> None:
             "objective values, terminal deviations, success flags, and dates."
         ),
     )
+    parser.add_argument(
+        "--include-oracle-cloned-policy",
+        action="store_true",
+        help=(
+            "Train an observation-only neural policy on pretrain and train "
+            "perfect-foresight trajectories, then report it on validation/test."
+        ),
+    )
     args = parser.parse_args()
     config = load_config(args.config)
     splits = args.split or list(DEFAULT_SPLITS)
@@ -322,6 +439,7 @@ def main() -> None:
         config_name,
         splits,
         write_perfect_foresight_trajectories=args.write_perfect_foresight_trajectories,
+        include_oracle_cloned_policy=args.include_oracle_cloned_policy,
     )
     log_benchmark_results(
         output,
@@ -329,6 +447,7 @@ def main() -> None:
         config_name,
         splits,
         write_perfect_foresight_trajectories=args.write_perfect_foresight_trajectories,
+        include_oracle_cloned_policy=args.include_oracle_cloned_policy,
     )
     print(json.dumps(output, indent=2))
 

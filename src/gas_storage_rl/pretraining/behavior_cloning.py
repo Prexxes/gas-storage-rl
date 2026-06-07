@@ -61,49 +61,58 @@ def load_trajectory_samples(
     price_scale: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Builds observation/action pairs from perfect-foresight JSONL trajectories."""
-    observations = []
-    actions = []
+    trajectories = []
     with Path(trajectory_path).open("r", encoding="utf-8") as file:
         for line in file:
-            if not line.strip():
-                continue
-            trajectory = json.loads(line)
-            prices = np.asarray(trajectory["prices"], dtype=np.float32)
-            storage_levels = np.asarray(trajectory["storage_levels"], dtype=np.float32)
-            path_actions = np.asarray(trajectory["actions"], dtype=np.float32)
-            target_inventory = float(
-                trajectory.get("target_inventory", storage_levels[0])
+            if line.strip():
+                trajectories.append(json.loads(line))
+    return trajectory_rows_to_samples(
+        trajectories,
+        capacity=capacity,
+        price_scale=price_scale,
+    )
+
+
+def trajectory_rows_to_samples(
+    trajectories: list[dict[str, Any]],
+    capacity: float,
+    price_scale: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Builds observation/action pairs from perfect-foresight trajectory rows."""
+    observations = []
+    actions = []
+    for trajectory in trajectories:
+        prices = np.asarray(trajectory["prices"], dtype=np.float32)
+        storage_levels = np.asarray(trajectory["storage_levels"], dtype=np.float32)
+        path_actions = np.asarray(trajectory["actions"], dtype=np.float32)
+        target_inventory = float(trajectory.get("target_inventory", storage_levels[0]))
+        horizon = len(path_actions)
+        denominator = max(horizon - 1, 1)
+        start_date_value = trajectory.get("start_date")
+        start_date = (
+            datetime.strptime(start_date_value, "%Y-%m-%d").date()
+            if start_date_value
+            else date(2001, 1, 1)
+        )
+        for step in range(horizon):
+            current_date = start_date + timedelta(days=step)
+            days_in_year = 366 if _is_leap_year(current_date.year) else 365
+            day_angle = (
+                2.0 * np.pi * (current_date.timetuple().tm_yday - 1) / days_in_year
             )
-            horizon = len(path_actions)
-            denominator = max(horizon - 1, 1)
-            start_date_value = trajectory.get("start_date")
-            start_date = (
-                datetime.strptime(start_date_value, "%Y-%m-%d").date()
-                if start_date_value
-                else date(2001, 1, 1)
+            observations.append(
+                [
+                    float(storage_levels[step] / capacity),
+                    float(prices[step] / price_scale),
+                    float(np.sin(day_angle)),
+                    float(np.cos(day_angle)),
+                    float((horizon - 1 - step) / denominator),
+                    float(target_inventory / capacity),
+                ]
             )
-            for step in range(horizon):
-                current_date = start_date + timedelta(days=step)
-                days_in_year = 366 if _is_leap_year(current_date.year) else 365
-                day_angle = (
-                    2.0
-                    * np.pi
-                    * (current_date.timetuple().tm_yday - 1)
-                    / days_in_year
-                )
-                observations.append(
-                    [
-                        float(storage_levels[step] / capacity),
-                        float(prices[step] / price_scale),
-                        float(np.sin(day_angle)),
-                        float(np.cos(day_angle)),
-                        float((horizon - 1 - step) / denominator),
-                        float(target_inventory / capacity),
-                    ]
-                )
-                actions.append([float(path_actions[step])])
+            actions.append([float(path_actions[step])])
     if not observations:
-        raise ValueError(f"No trajectory samples found in {trajectory_path}")
+        raise ValueError("No trajectory samples found")
     return (
         np.asarray(observations, dtype=np.float32),
         np.asarray(actions, dtype=np.float32),

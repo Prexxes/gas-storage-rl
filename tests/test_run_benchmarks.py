@@ -19,8 +19,13 @@ def _config(tmp_path: Path) -> dict[str, Any]:
     """Returns a minimal benchmark config."""
     return {
         "logging_config": {"run_dir": str(tmp_path / "runs")},
-        "seeds": {"eval_seed": 1},
-        "evaluation_config": {"lsmc_action_grid": [-1.0, 0.0, 1.0]},
+        "seeds": {"agent_seed": 2, "eval_seed": 1},
+        "evaluation_config": {
+            "lsmc_action_grid": [-1.0, 0.0, 1.0],
+            "oracle_cloned_policy_epochs": 2,
+            "oracle_cloned_policy_batch_size": 4,
+            "oracle_cloned_policy_hidden_sizes": [8],
+        },
     }
 
 
@@ -219,3 +224,73 @@ def test_main_can_log_pretrain_split(
     ]
     assert rows[0]["split"] == "pretrain"
     assert rows[0]["start_date"] == "2023-01-01"
+
+
+def test_main_can_evaluate_oracle_cloned_policy_on_validation_and_test(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Oracle-cloned policy trains on pretrain/train and reports validation/test."""
+    config = _config(tmp_path)
+    monkeypatch.setattr(run_benchmarks, "load_config", lambda _: config)
+    monkeypatch.setattr(run_benchmarks, "build_environment", lambda _: _environment())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_benchmarks",
+            "--config",
+            "configs/debug.yaml",
+            "--split",
+            "train",
+            "--split",
+            "validation",
+            "--split",
+            "test",
+            "--include-oracle-cloned-policy",
+        ],
+    )
+
+    run_benchmarks.main()
+
+    run_dir = next((tmp_path / "runs" / "benchmarks").iterdir())
+    train_metrics = json.loads(
+        (run_dir / "benchmark_metrics_train.json").read_text(encoding="utf-8")
+    )
+    validation_metrics = json.loads(
+        (run_dir / "benchmark_metrics_validation.json").read_text(encoding="utf-8")
+    )
+    test_metrics = json.loads(
+        (run_dir / "benchmark_metrics_test.json").read_text(encoding="utf-8")
+    )
+
+    assert "oracle_cloned_policy" not in train_metrics["benchmarks"]
+    assert "oracle_cloned_policy" in validation_metrics["benchmarks"]
+    assert "oracle_cloned_policy" in test_metrics["benchmarks"]
+    assert (
+        validation_metrics["benchmarks"]["oracle_cloned_policy"][
+            "imitation_training_samples"
+        ]
+        == 12.0
+    )
+    assert (
+        test_metrics["benchmarks"]["oracle_cloned_policy"][
+            "imitation_training_samples"
+        ]
+        == 12.0
+    )
+
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["includes_oracle_cloned_policy"] is True
+
+    rows = list(
+        csv.DictReader(
+            (run_dir / "benchmark_metrics.csv").open(newline="", encoding="utf-8")
+        )
+    )
+    assert len(rows) == 14
+    assert {
+        row["split"]
+        for row in rows
+        if row["benchmark"] == "oracle_cloned_policy"
+    } == {"validation", "test"}
