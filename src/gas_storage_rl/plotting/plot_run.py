@@ -85,12 +85,79 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     selected_prices = split_paths[path_ids]
+    selected_start_indices = dataset.get_start_indices(args.split)[path_ids]
     _save(plot_price_paths(selected_prices, n_paths=args.n_paths), out_dir / "price.png")
+    _save(
+        plot_price_paths(
+            selected_prices,
+            n_paths=args.n_paths,
+            start_indices=selected_start_indices,
+            time_axis="absolute",
+        ),
+        out_dir / "price_absolute.png",
+    )
+    _save(
+        plot_price_paths(
+            selected_prices,
+            n_paths=args.n_paths,
+            start_indices=selected_start_indices,
+            time_axis="day_of_year",
+        ),
+        out_dir / "price_day_of_year.png",
+    )
     _save(plot_agent_actions(trajectories, n_paths=args.n_paths), out_dir / "actions.png")
+    _save(
+        plot_agent_actions(
+            trajectories,
+            n_paths=args.n_paths,
+            time_axis="absolute",
+        ),
+        out_dir / "actions_absolute.png",
+    )
+    _save(
+        plot_agent_actions(
+            trajectories,
+            n_paths=args.n_paths,
+            time_axis="day_of_year",
+        ),
+        out_dir / "actions_day_of_year.png",
+    )
     _save(plot_storage_levels(trajectories, n_paths=args.n_paths), out_dir / "storage.png")
+    _save(
+        plot_storage_levels(
+            trajectories,
+            n_paths=args.n_paths,
+            time_axis="absolute",
+        ),
+        out_dir / "storage_absolute.png",
+    )
+    _save(
+        plot_storage_levels(
+            trajectories,
+            n_paths=args.n_paths,
+            time_axis="day_of_year",
+        ),
+        out_dir / "storage_day_of_year.png",
+    )
     _save(
         plot_cumulative_cashflows(trajectories, n_paths=args.n_paths),
         out_dir / "cashflow.png",
+    )
+    _save(
+        plot_cumulative_cashflows(
+            trajectories,
+            n_paths=args.n_paths,
+            time_axis="absolute",
+        ),
+        out_dir / "cashflow_absolute.png",
+    )
+    _save(
+        plot_cumulative_cashflows(
+            trajectories,
+            n_paths=args.n_paths,
+            time_axis="day_of_year",
+        ),
+        out_dir / "cashflow_day_of_year.png",
     )
     _save(plot_price_action_scatter(trajectories), out_dir / "price_action_scatter.png")
 
