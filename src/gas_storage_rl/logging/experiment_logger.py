@@ -18,6 +18,16 @@ def _json_default(value: Any) -> str:
     return str(value)
 
 
+def _safe_run_id_component(value: Any, default: str) -> str:
+    """Returns a filesystem-safe run id component."""
+    text = str(value or default)
+    cleaned = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in text
+    )
+    return cleaned or default
+
+
 class ExperimentLogger:
     """Creates run directories and stores config, metrics, and summaries."""
 
@@ -27,7 +37,18 @@ class ExperimentLogger:
         self.config = config
         serialized = json.dumps(config, sort_keys=True, default=_json_default)
         self.config_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:8]
-        self.run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{self.config_hash}"
+        self.environment_name = _safe_run_id_component(
+            config.get("environment_config", {}).get("environment_name"),
+            "environment",
+        )
+        self.algorithm_name = _safe_run_id_component(
+            config.get("agent_config", {}).get("algorithm_name"),
+            "algorithm",
+        )
+        self.run_id = (
+            f"{time.strftime('%Y%m%d-%H%M%S')}-"
+            f"{self.environment_name}-{self.algorithm_name}-{self.config_hash}"
+        )
         self.run_dir = self.base_dir / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=False)
         self.write_json("config.json", config)
@@ -73,6 +94,8 @@ class ExperimentLogger:
         return {
             "run_id": self.run_id,
             "config_hash": self.config_hash,
+            "environment_name": self.environment_name,
+            "algorithm_name": self.algorithm_name,
             "git_commit_hash": git_commit,
             "python_version": sys.version,
             "platform": platform.platform(),
