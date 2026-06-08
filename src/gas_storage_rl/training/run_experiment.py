@@ -16,7 +16,11 @@ from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
 from gas_storage_rl.logging.experiment_logger import ExperimentLogger
 from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.training.callbacks import TrainingLoggingCallback
-from gas_storage_rl.training.config import build_environment, load_config
+from gas_storage_rl.training.config import (
+    build_effective_run_config,
+    build_environment,
+    load_config,
+)
 
 
 def load_pretrained_policy_state(model: Any, pretrained_policy: str | Path) -> Path:
@@ -52,7 +56,8 @@ def main() -> None:
     dataset, storage_params, env_kwargs = build_environment(config)
     train_env = GasStorageEnv(dataset, "train", storage_params, **env_kwargs)
     eval_env = GasStorageEnv(dataset, "validation", storage_params, **env_kwargs)
-    logger = ExperimentLogger(config["logging_config"]["run_dir"], config)
+    effective_config = build_effective_run_config(config, args.algorithm)
+    logger = ExperimentLogger(config["logging_config"]["run_dir"], effective_config)
     logger.write_json("metadata.json", logger.metadata())
 
     started = time.time()

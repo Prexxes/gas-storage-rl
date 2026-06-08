@@ -19,6 +19,38 @@ def load_config(path: str | Path) -> dict[str, Any]:
         return yaml.safe_load(file)
 
 
+def build_effective_run_config(
+    config: dict[str, Any],
+    algorithm_name: str,
+    seed_index: int | None = None,
+) -> dict[str, Any]:
+    """Returns the configuration values that affect one training run."""
+    effective = {
+        "environment_config": dict(config["environment_config"]),
+        "dataset_config": _effective_dataset_config(config["dataset_config"]),
+        "price_process_config": _effective_price_process_config(config),
+        "training_config": _effective_training_config(
+            config["training_config"],
+            seed_index,
+        ),
+        "evaluation_config": {
+            "deterministic": bool(
+                config.get("evaluation_config", {}).get("deterministic", True)
+            ),
+            "evaluation_split": "validation",
+        },
+        "seeds": _effective_seeds(config["seeds"]),
+        "agent_config": {
+            "algorithm_name": algorithm_name,
+            "hyperparameters": dict(config["agent_config"].get(algorithm_name, {})),
+        },
+        "logging_config": {
+            "run_dir": config.get("logging_config", {}).get("run_dir", "runs"),
+        },
+    }
+    return effective
+
+
 def build_environment(
     config: dict[str, Any],
 ) -> tuple[PathDataset, StorageParams, dict[str, Any]]:
@@ -96,6 +128,15 @@ def build_environment(
 
 def _build_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
     """Returns fallback or historically calibrated price-process parameters."""
+    price_process_config = config.get("price_process_config", {})
+    if "parameters" in price_process_config:
+        price_config = dict(price_process_config["parameters"])
+        price_config["_environment_name"] = price_process_config.get(
+            "environment_name",
+            config["environment_config"]["environment_name"],
+        )
+        return price_config
+
     calibrated_config = config.get("calibrated_price_process_config", {})
     if not bool(calibrated_config.get("enabled", False)):
         return dict(config["price_process_config"])
@@ -118,3 +159,78 @@ def _build_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
         "historical_calibrated",
     )
     return price_config
+
+
+def _effective_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Returns logged price-process provenance and effective parameters."""
+    price_config = _build_price_process_config(config)
+    environment_name = price_config.pop(
+        "_environment_name",
+        config["environment_config"]["environment_name"],
+    )
+    effective = {
+        "source": "config",
+        "environment_name": environment_name,
+        "parameters": price_config,
+    }
+    calibrated_config = config.get("calibrated_price_process_config", {})
+    if bool(calibrated_config.get("enabled", False)):
+        historical_config = config["historical_data_config"]
+        effective["source"] = "historical_calibration"
+        effective["calibration"] = {
+            "monthly_calibration_csv": historical_config["monthly_calibration_csv"],
+            "daily_calibration_csv": historical_config["daily_calibration_csv"],
+            "calibration_end_date": historical_config.get(
+                "calibration_end_date",
+                "2024-12-31",
+            ),
+            "jump_threshold_sigma": float(
+                calibrated_config.get("jump_threshold_sigma", 3.0)
+            ),
+        }
+        if historical_config.get("monthly_price_column") is not None:
+            effective["calibration"]["monthly_price_column"] = historical_config[
+                "monthly_price_column"
+            ]
+        if historical_config.get("daily_calibration_price_column") is not None:
+            effective["calibration"]["daily_price_column"] = historical_config[
+                "daily_calibration_price_column"
+            ]
+    return effective
+
+
+def _effective_dataset_config(dataset_config: dict[str, Any]) -> dict[str, Any]:
+    """Returns dataset settings used by training runs."""
+    keys = (
+        "n_pretrain_paths",
+        "n_train_paths",
+        "n_validation_paths",
+        "n_test_paths",
+        "cache_dir",
+        "use_cache",
+        "force_regenerate",
+        "max_start_offset",
+    )
+    return {key: dataset_config[key] for key in keys if key in dataset_config}
+
+
+def _effective_training_config(
+    training_config: dict[str, Any],
+    seed_index: int | None,
+) -> dict[str, Any]:
+    """Returns training settings used by one run."""
+    effective = {
+        "total_timesteps": int(training_config["total_timesteps"]),
+        "eval_freq": int(training_config["eval_freq"]),
+    }
+    if seed_index is not None:
+        effective["seed_index"] = int(seed_index)
+    if "n_seeds" in training_config:
+        effective["n_seeds"] = int(training_config["n_seeds"])
+    return effective
+
+
+def _effective_seeds(seeds: dict[str, Any]) -> dict[str, int]:
+    """Returns non-plot seeds used by training and evaluation."""
+    keys = ("master_seed", "dataset_seed", "env_seed", "agent_seed", "eval_seed")
+    return {key: int(seeds[key]) for key in keys if key in seeds}
