@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import getpass
 import hashlib
 import json
 import platform
@@ -91,13 +92,31 @@ class ExperimentLogger:
             ).strip()
         except Exception:
             git_commit = None
+        try:
+            git_status = subprocess.check_output(
+                ["git", "status", "--porcelain"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            git_dirty = bool(git_status.strip())
+        except Exception:
+            git_dirty = None
         return {
             "run_id": self.run_id,
             "config_hash": self.config_hash,
             "environment_name": self.environment_name,
             "algorithm_name": self.algorithm_name,
             "git_commit_hash": git_commit,
+            "git_dirty": git_dirty,
+            "user": getpass.getuser(),
             "python_version": sys.version,
             "platform": platform.platform(),
             "start_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
+
+    def finalize_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Adds the run end time and rewrites metadata.json."""
+        finalized = dict(metadata)
+        finalized["end_time"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        self.write_json("metadata.json", finalized)
+        return finalized

@@ -58,7 +58,8 @@ def main() -> None:
     eval_env = GasStorageEnv(dataset, "validation", storage_params, **env_kwargs)
     effective_config = build_effective_run_config(config, args.algorithm)
     logger = ExperimentLogger(config["logging_config"]["run_dir"], effective_config)
-    logger.write_json("metadata.json", logger.metadata())
+    metadata = logger.metadata()
+    logger.write_json("metadata.json", metadata)
 
     started = time.time()
     progress.step(2, "creating agent")
@@ -116,6 +117,7 @@ def main() -> None:
     }
     logger.write_json("final_summary.json", summary)
     model.save(logger.run_dir / "final_model")
+    logger.finalize_metadata(metadata)
     progress.finish("done")
     print(json.dumps({"run_dir": str(logger.run_dir), **summary}, indent=2))
 
