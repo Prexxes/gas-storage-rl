@@ -217,3 +217,31 @@ Create plots for a saved run:
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.plotting.plot_run --run-dir runs/<run_id> --split validation --path-id 0
 ```
+
+Create raw 729-day synthetic price-path plots from the training split:
+
+```bash
+python scripts/create_price_path_plots.py --config configs/ou_c30.yaml --n-paths 50
+```
+
+The price-path plotting scripts use `--split train` by default. Validation and test
+price paths are plotted only when requested explicitly:
+
+```bash
+python scripts/create_price_path_plots.py --config configs/ou_c30.yaml --split validation --n-paths 50
+python scripts/create_price_path_plots.py --config configs/ou_c30.yaml --split test --n-paths 50
+```
+
+Create raw 729-day historically calibrated synthetic price-path plots:
+
+```bash
+python scripts/create_historical_price_path_plots.py \
+  --config configs/historical_ou_c30.yaml \
+  --split train \
+  --n-paths 50
+```
+
+The plotted environment is taken from the selected config. Raw price-path plots include
+a dashed vertical line at simulation day 365, marking the beginning of the second year.
+Historical backtest price paths are excluded by default and are plotted only with
+`--include-backtest`.
