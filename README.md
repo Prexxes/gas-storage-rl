@@ -101,7 +101,7 @@ Implemented benchmarks are:
 
 - `RandomPolicy`: samples uniformly from `[-1, 1]`.
 - `RuleBasedPolicy`: buys below the 30 percent training quantile, sells above the 70 percent quantile, and enforces safe liquidation near maturity.
-- `LSMCBenchmark`: Least-Squares Monte Carlo with action grid `[-1, 0, 1]` and polynomial continuation features.
+- `LSMCBenchmark`: Least-Squares Monte Carlo with action grid `[-1, -0.5, 0, 0.5, 1]`, a configurable storage inventory grid, terminal-feasible action clipping, and polynomial continuation features.
 - `PerfectForesightBaseline`: deterministic upper bound solved with `scipy.optimize.linprog`.
 - `OracleClonedPolicy`: neural observation-only policy trained by supervised imitation of perfect-foresight actions from the `pretrain` and `train` splits, then reported only on `validation` and `test`.
 
@@ -228,6 +228,11 @@ The random-policy aggregate in `benchmark_metrics.csv` and
 `benchmark_evaluations.csv` is then computed over all requested random seeds and all
 episodes. `final_episode_metrics_<split>.csv` keeps the seed column so path-level plots
 can either show individual random draws or aggregate them later.
+
+LSMC uses `evaluation_config.lsmc_action_grid` and
+`evaluation_config.lsmc_n_inventory_levels`. Increasing the number of inventory levels
+improves the storage-state coverage of the regression, but increases the fit cost
+roughly linearly.
 
 Perfect-foresight path-level trajectories can be logged explicitly:
 

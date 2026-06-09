@@ -7,7 +7,10 @@ from datetime import date, timedelta
 
 import numpy as np
 
-from gas_storage_rl.envs.storage_dynamics import StorageParams, clip_storage_action
+from gas_storage_rl.envs.storage_dynamics import (
+    StorageParams,
+    clip_storage_action_to_terminal_feasibility,
+)
 
 
 def _features(
@@ -17,10 +20,11 @@ def _features(
     capacity: float,
     calendar_angles: np.ndarray,
     target_inventory: np.ndarray,
+    price_normalizer: float,
 ) -> np.ndarray:
     """Builds polynomial regression features up to degree two."""
     normalized_storage = storage / capacity
-    normalized_price = price / np.maximum(np.mean(price), 1e-8)
+    normalized_price = price / max(float(price_normalizer), 1e-8)
     normalized_target = target_inventory / capacity
     time = np.full_like(normalized_storage, time_fraction, dtype=np.float64)
     sin_day = np.sin(calendar_angles)
@@ -70,9 +74,14 @@ class LSMCBenchmark:
     storage_params: StorageParams
     lambda_terminal: float
     action_grid: np.ndarray = field(
-        default_factory=lambda: np.array([-1.0, 0.0, 1.0], dtype=np.float64)
+        default_factory=lambda: np.array(
+            [-1.0, -0.5, 0.0, 0.5, 1.0],
+            dtype=np.float64,
+        )
     )
+    n_inventory_levels: int = 21
     coefficients: dict[int, np.ndarray] = field(default_factory=dict)
+    price_normalizer: float = 1.0
 
     def fit(
         self,
@@ -83,6 +92,8 @@ class LSMCBenchmark:
     ) -> "LSMCBenchmark":
         """Fits continuation value regressions on training paths."""
         n_paths, horizon = train_paths.shape
+        if self.n_inventory_levels < 2:
+            raise ValueError("n_inventory_levels must be at least 2")
         if start_dates is None:
             start_dates = [date(2001, 1, 1)] * n_paths
         if len(start_dates) != n_paths:
@@ -97,43 +108,64 @@ class LSMCBenchmark:
             if target_inventories is None
             else _inventory_values(target_inventories, n_paths, 0.0)
         )
-        storage = initial_values.copy()
-        # A simple rollout state proxy keeps this MVP small and reproducible.
-        values_next = np.zeros(n_paths, dtype=np.float64)
+        del initial_values
+        self.price_normalizer = float(np.mean(train_paths))
+        inventory_grid = np.linspace(
+            0.0,
+            self.storage_params.capacity,
+            int(self.n_inventory_levels),
+            dtype=np.float64,
+        )
+        storage_states = np.tile(inventory_grid, n_paths)
+        target_states = np.repeat(target_values, len(inventory_grid))
         for step in reversed(range(horizon)):
-            price = train_paths[:, step]
+            price_states = np.repeat(train_paths[:, step], len(inventory_grid))
+            calendar_states = np.repeat(
+                _calendar_angles(start_dates, step),
+                len(inventory_grid),
+            )
             candidates = []
-            next_levels = []
             for action in self.action_grid:
-                executed = np.array(
-                    [
-                        clip_storage_action(action, level, self.storage_params)
-                        for level in storage
-                    ]
+                remaining_steps_after_action = horizon - step - 1
+                executed = _clip_actions(
+                    action,
+                    storage_states,
+                    self.storage_params,
+                    remaining_steps_after_action,
+                    target_states,
                 )
-                level_next = storage + executed
-                reward = -executed * price
+                level_next = storage_states + executed
+                reward = -executed * price_states
                 if step == horizon - 1:
-                    reward -= self.lambda_terminal * np.abs(
-                        level_next - target_values
+                    value = reward - self.lambda_terminal * np.abs(
+                        level_next - target_states
                     )
-                candidates.append(reward + values_next)
-                next_levels.append(level_next)
+                else:
+                    continuation_features = _features(
+                        level_next,
+                        price_states,
+                        (step + 1) / max(horizon - 1, 1),
+                        self.storage_params.capacity,
+                        np.repeat(
+                            _calendar_angles(start_dates, step + 1),
+                            len(inventory_grid),
+                        ),
+                        target_states,
+                        self.price_normalizer,
+                    )
+                    value = reward + continuation_features @ self.coefficients[step + 1]
+                candidates.append(value)
             best_values = np.max(np.vstack(candidates), axis=0)
             x = _features(
-                storage,
-                price,
+                storage_states,
+                price_states,
                 step / max(horizon - 1, 1),
                 self.storage_params.capacity,
-                _calendar_angles(start_dates, step),
-                target_values,
+                calendar_states,
+                target_states,
+                self.price_normalizer,
             )
             self.coefficients[step] = np.linalg.lstsq(x, best_values, rcond=None)[0]
-            best_action_index = np.argmax(np.vstack(candidates), axis=0)
-            storage = np.array(
-                [next_levels[index][path] for path, index in enumerate(best_action_index)]
-            )
-            values_next = best_values
         return self
 
     def predict_action(
@@ -153,33 +185,41 @@ class LSMCBenchmark:
         )
         best_action = 0.0
         best_value = -np.inf
+        remaining_steps_after_action = horizon - current_step - 1
         for action in self.action_grid:
-            executed = clip_storage_action(action, storage_level, self.storage_params)
+            executed = _clip_action(
+                action,
+                storage_level,
+                self.storage_params,
+                remaining_steps_after_action,
+                target,
+            )
             next_level = storage_level + executed
             immediate = -executed * price
             if current_step == horizon - 1:
                 immediate -= self.lambda_terminal * abs(
                     next_level - target
                 )
-            coef = self.coefficients.get(current_step)
+            coef = self.coefficients.get(current_step + 1)
             continuation = 0.0
             if coef is not None and current_step < horizon - 1:
                 x = _features(
                     np.array([next_level]),
                     np.array([price]),
-                    current_step / max(horizon - 1, 1),
+                    (current_step + 1) / max(horizon - 1, 1),
                     self.storage_params.capacity,
                     _calendar_angles(
                         [start_date or date(2001, 1, 1)],
-                        current_step,
+                        current_step + 1,
                     ),
                     np.array([target]),
+                    self.price_normalizer,
                 )
                 continuation = float((x @ coef).item())
             value = immediate + continuation
             if value > best_value:
                 best_value = value
-                best_action = float(action)
+                best_action = float(executed)
         return best_action
 
     def evaluate(
@@ -223,7 +263,13 @@ class LSMCBenchmark:
                     start_date,
                     float(target),
                 )
-                executed = clip_storage_action(action, storage, self.storage_params)
+                executed = _clip_action(
+                    action,
+                    storage,
+                    self.storage_params,
+                    len(path) - step - 1,
+                    float(target),
+                )
                 storage += executed
                 total += -executed * float(price)
                 if step == len(path) - 1:
@@ -236,6 +282,73 @@ class LSMCBenchmark:
             "std_return_raw": float(np.std(returns)),
             "median_return_raw": float(np.median(returns)),
         }
+
+
+def _clip_action(
+    action: float,
+    storage_level: float,
+    params: StorageParams,
+    remaining_steps_after_action: int,
+    target_inventory: float,
+) -> float:
+    """Clips LSMC candidate actions exactly like the environment executes them."""
+    return _scalar_clip_action(
+        action,
+        storage_level,
+        params,
+        remaining_steps_after_action,
+        target_inventory,
+    )
+
+
+def _clip_actions(
+    action: float,
+    storage_levels: np.ndarray,
+    params: StorageParams,
+    remaining_steps_after_action: int,
+    target_inventories: np.ndarray,
+) -> np.ndarray:
+    """Vectorizes environment-equivalent action clipping for LSMC candidates."""
+    storage = np.asarray(storage_levels, dtype=np.float64)
+    target = np.asarray(target_inventories, dtype=np.float64)
+    normal_lower = np.maximum(-params.withdrawal_rate, -storage)
+    normal_upper = np.minimum(params.injection_rate, params.capacity - storage)
+
+    remaining_steps = max(int(remaining_steps_after_action), 0)
+    min_reachable = np.maximum(
+        0.0,
+        target - remaining_steps * params.injection_rate,
+    )
+    max_reachable = np.minimum(
+        params.capacity,
+        target + remaining_steps * params.withdrawal_rate,
+    )
+    terminal_lower = min_reachable - storage
+    terminal_upper = max_reachable - storage
+    lower = np.maximum(normal_lower, terminal_lower)
+    upper = np.minimum(normal_upper, terminal_upper)
+
+    requested = np.full_like(storage, float(action), dtype=np.float64)
+    normal_clipped = np.minimum(np.maximum(requested, normal_lower), normal_upper)
+    terminal_clipped = np.minimum(np.maximum(requested, lower), upper)
+    return np.where(lower > upper, normal_clipped, terminal_clipped)
+
+
+def _scalar_clip_action(
+    action: float,
+    storage_level: float,
+    params: StorageParams,
+    remaining_steps_after_action: int,
+    target_inventory: float,
+) -> float:
+    """Returns scalar environment clipping for tests and implementation parity."""
+    return clip_storage_action_to_terminal_feasibility(
+        requested_action=float(action),
+        storage_level=float(storage_level),
+        params=params,
+        remaining_steps_after_action=remaining_steps_after_action,
+        target_inventory=float(target_inventory),
+    )
 
 
 def _inventory_values(

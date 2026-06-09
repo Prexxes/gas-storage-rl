@@ -16,7 +16,7 @@ environment_config:
   leakage: 0.0
 dataset_config: {n_pretrain_paths: 5000, n_train_paths: 5000, n_validation_paths: 500, n_test_paths: 1000, cache_dir: data/cache, use_cache: true, force_regenerate: false}
 training_config: {total_timesteps: 500000, eval_freq: 20000, n_seeds: 10}
-evaluation_config: {deterministic: true, lsmc_action_grid: [-1.0, 0.0, 1.0]}
+evaluation_config: {deterministic: true, lsmc_action_grid: [-1.0, -0.5, 0.0, 0.5, 1.0], lsmc_n_inventory_levels: 21}
 plotting_config: {plot_split: validation, plot_n_paths: 50}
 seeds: {master_seed: 601, dataset_seed: 6101, env_seed: 6102, agent_seed: 6103, eval_seed: 6104, plot_seed: 6105}
 price_process_config: {base_price: 50.0, seasonal_amplitude: 0.25, seasonal_phase: 0.0, ou_mean_reversion: 0.08, ou_volatility: 0.12, jump_probability: 0.02, jump_mean: 0.0, jump_std: 0.35, stress_probability: 0.005, stress_multiplier: 1.5}

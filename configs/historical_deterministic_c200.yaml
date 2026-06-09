@@ -35,7 +35,7 @@ calibrated_price_process_config:
   jump_threshold_sigma: 3.0
   backtest_window_stride: 1
 training_config: {total_timesteps: 500000, eval_freq: 20000, n_seeds: 10}
-evaluation_config: {deterministic: true, lsmc_action_grid: [-1.0, 0.0, 1.0]}
+evaluation_config: {deterministic: true, lsmc_action_grid: [-1.0, -0.5, 0.0, 0.5, 1.0], lsmc_n_inventory_levels: 21}
 plotting_config: {plot_split: validation, plot_n_paths: 50}
 seeds: {master_seed: 1201, dataset_seed: 12101, env_seed: 12102, agent_seed: 12103, eval_seed: 12104, plot_seed: 12105}
 price_process_config: {base_price: 50.0, seasonal_amplitude: 0.25, seasonal_phase: 0.0, ou_mean_reversion: 0.08, ou_volatility: 0.12, jump_probability: 0.02, jump_mean: 0.0, jump_std: 0.35, stress_probability: 0.005, stress_multiplier: 1.5}

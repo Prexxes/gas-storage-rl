@@ -28,7 +28,8 @@ training_config:
   n_seeds: 1
 evaluation_config:
   deterministic: true
-  lsmc_action_grid: [-1.0, 0.0, 1.0]
+  lsmc_action_grid: [-1.0, -0.5, 0.0, 0.5, 1.0]
+  lsmc_n_inventory_levels: 21
 plotting_config:
   plot_split: validation
   plot_n_paths: 4

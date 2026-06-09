@@ -434,13 +434,19 @@ def run_benchmarks(
         withdrawal_rate=storage_params.withdrawal_rate,
     )
     action_grid = np.asarray(
-        config.get("evaluation_config", {}).get("lsmc_action_grid", [-1.0, 0.0, 1.0]),
+        config.get("evaluation_config", {}).get(
+            "lsmc_action_grid",
+            [-1.0, -0.5, 0.0, 0.5, 1.0],
+        ),
         dtype=np.float64,
     )
     lsmc = LSMCBenchmark(
         storage_params,
         train_env.lambda_terminal,
         action_grid=action_grid,
+        n_inventory_levels=int(
+            config.get("evaluation_config", {}).get("lsmc_n_inventory_levels", 21)
+        ),
     ).fit(
         train_paths,
         dataset.get_start_dates("train"),
