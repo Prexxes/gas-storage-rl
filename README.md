@@ -43,10 +43,18 @@ The storage level satisfies `0 <= v_t <= C`. The continuous action space is `Box
 Observations are `np.float32` vectors:
 
 ```text
-[storage_level / capacity, price / price_scale, current_step / (episode_length - 1)]
+[
+  storage_level / capacity,
+  price / price_scale,
+  sin(day_of_year),
+  cos(day_of_year),
+  remaining_time,
+  target_terminal_inventory / capacity,
+]
 ```
 
-The MVP intentionally does not include M+1 futures features.
+The MVP intentionally does not include M+1 futures features. Calendar features are
+derived from the episode start date when date metadata is available.
 
 ## Reward
 
@@ -157,6 +165,69 @@ under `runs/benchmarks/<timestamp>-<config_name>-<config_hash>/` with `config.js
 long-format `benchmark_metrics.csv` with one row per benchmark and split. The same
 runner works for historically calibrated synthetic price configs because it evaluates
 the dataset produced by the selected config.
+
+For learning-curve plots, benchmark metrics can also be expanded onto the same
+training-step coordinates as RL `evaluations.csv`. When `training_config.total_timesteps`
+and `training_config.eval_freq` are present in the config, this writes
+`benchmark_evaluations.csv` at:
+
+```text
+0, eval_freq, 2 * eval_freq, ..., total_timesteps
+```
+
+These rows are benchmark reference lines, not benchmark training curves. The values are
+constant across steps because `random`, `rule_based`, `lsmc`, `perfect_foresight`, and
+`oracle_cloned_policy` are evaluated after their respective setup or fit procedure.
+`perfect_foresight` should be interpreted as an oracle upper bound because it solves
+each requested episode with full future price information.
+
+The timeline can be overridden explicitly:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks \
+  --config configs/debug.yaml \
+  --split validation \
+  --timeline-total-timesteps 100000 \
+  --timeline-eval-freq 20000
+```
+
+Final per-episode benchmark comparisons can be written with:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks \
+  --config configs/debug.yaml \
+  --split validation \
+  --include-oracle-cloned-policy \
+  --write-final-episode-metrics
+```
+
+This adds `final_episode_metrics_validation.csv` with one row per method and fixed
+validation episode. The synthetic `test` split still runs only when requested
+explicitly:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks \
+  --config configs/debug.yaml \
+  --split test \
+  --include-oracle-cloned-policy \
+  --write-final-episode-metrics
+```
+
+For stochastic random-policy comparisons, pass multiple action seeds:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks \
+  --config configs/debug.yaml \
+  --split validation \
+  --random-policy-seed 1 \
+  --random-policy-seed 2 \
+  --random-policy-seed 3
+```
+
+The random-policy aggregate in `benchmark_metrics.csv` and
+`benchmark_evaluations.csv` is then computed over all requested random seeds and all
+episodes. `final_episode_metrics_<split>.csv` keeps the seed column so path-level plots
+can either show individual random draws or aggregate them later.
 
 Perfect-foresight path-level trajectories can be logged explicitly:
 

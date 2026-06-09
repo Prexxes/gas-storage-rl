@@ -294,3 +294,101 @@ def test_main_can_evaluate_oracle_cloned_policy_on_validation_and_test(
         for row in rows
         if row["benchmark"] == "oracle_cloned_policy"
     } == {"validation", "test"}
+
+
+def test_main_writes_benchmark_evaluations_on_timeline(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Benchmark evaluations are expanded over RL evaluation step points."""
+    config = _config(tmp_path)
+    config["training_config"] = {"total_timesteps": 50_000, "eval_freq": 20_000}
+    monkeypatch.setattr(run_benchmarks, "load_config", lambda _: config)
+    monkeypatch.setattr(run_benchmarks, "build_environment", lambda _: _environment())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_benchmarks",
+            "--config",
+            "configs/debug.yaml",
+            "--split",
+            "validation",
+        ],
+    )
+
+    run_benchmarks.main()
+
+    run_dir = next((tmp_path / "runs" / "benchmarks").iterdir())
+    rows = list(
+        csv.DictReader(
+            (run_dir / "benchmark_evaluations.csv").open(
+                newline="",
+                encoding="utf-8",
+            )
+        )
+    )
+    assert {int(row["total_training_env_steps"]) for row in rows} == {
+        0,
+        20_000,
+        40_000,
+        50_000,
+    }
+    assert {row["method"] for row in rows} == {
+        "random",
+        "rule_based",
+        "lsmc",
+        "perfect_foresight",
+    }
+    assert {row["split"] for row in rows} == {"validation"}
+    assert all(row["is_baseline_reference"] == "True" for row in rows)
+
+
+def test_main_writes_final_episode_metrics_when_requested(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Benchmark CLI writes one final episode metrics CSV per requested split."""
+    config = _config(tmp_path)
+    monkeypatch.setattr(run_benchmarks, "load_config", lambda _: config)
+    monkeypatch.setattr(run_benchmarks, "build_environment", lambda _: _environment())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_benchmarks",
+            "--config",
+            "configs/debug.yaml",
+            "--split",
+            "validation",
+            "--write-final-episode-metrics",
+        ],
+    )
+
+    run_benchmarks.main()
+
+    run_dir = next((tmp_path / "runs" / "benchmarks").iterdir())
+    rows = list(
+        csv.DictReader(
+            (run_dir / "final_episode_metrics_validation.csv").open(
+                newline="",
+                encoding="utf-8",
+            )
+        )
+    )
+    assert len(rows) == 8
+    assert {row["method"] for row in rows} == {
+        "random",
+        "rule_based",
+        "lsmc",
+        "perfect_foresight",
+    }
+    assert {row["path_id"] for row in rows} == {"0", "1"}
+    assert {row["start_date"] for row in rows} == {
+        "2024-02-01",
+        "2024-02-04",
+    }
+    assert "episode_return_raw" in rows[0]
+
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["writes_final_episode_metrics"] is True
