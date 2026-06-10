@@ -109,7 +109,7 @@ Implemented benchmarks are:
 
 PPO, SAC, and TD3 are created through Stable-Baselines3. RL Baselines3 Zoo may be used as a reference for implementation details and hyperparameters, but the core framework is this repository.
 
-## Commands
+## Setup And Tests
 
 Install dependencies:
 
@@ -123,21 +123,55 @@ Run tests:
 PYTHONPATH=src pytest -q
 ```
 
-Run a debug experiment:
+CLI run commands print compact progress updates to stderr while keeping final JSON
+summaries on stdout.
+
+## Run Experiments
+
+Train one RL agent:
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.training.run_experiment --config configs/debug.yaml --algorithm ppo
 ```
 
-CLI run commands print compact progress updates to stderr while keeping final JSON
-summaries on stdout.
+Each RL run writes:
 
-Each run writes `config.json`, `metadata.json`, `metrics.csv`, `evaluations.csv`, `final_summary.json`, `final_model.zip`, and SB3 internal logs under `sb3_logs/`. The training callback logs completed training episodes to `metrics.csv`, runs periodic validation according to `training_config.eval_freq`, and saves `best_validation_model.zip`. The training command does not evaluate the test split or historical backtest split; those holdout evaluations are run manually after model selection.
+- `config.json`
+- `metadata.json`
+- `metrics.csv`: completed training episodes
+- `evaluations.csv`: periodic validation according to `training_config.eval_freq`
+- `best_validation_model.zip`
+- `final_model.zip`
+- `final_summary.json`
+- `sb3_logs/`
+
+The training command does not evaluate the synthetic test split or historical backtest
+split. Run holdout evaluations manually after model selection.
+
+Fine-tune from behavior-cloning pretraining weights:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment \
+  --config configs/debug.yaml \
+  --algorithm ppo \
+  --pretrained-policy runs/pretraining/<run_id>/policy_state_dict.pt
+```
+
+## Holdout Evaluation
 
 Run manual holdout evaluation on the synthetic test split:
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_holdout_evaluation --run-dir runs/<run_id> --split test
+```
+
+Write final per-episode RL metrics for comparison plots:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_holdout_evaluation \
+  --run-dir runs/<run_id> \
+  --split validation \
+  --write-final-episode-metrics
 ```
 
 Run manual holdout evaluation on historical backtest windows:
@@ -146,7 +180,9 @@ Run manual holdout evaluation on historical backtest windows:
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_holdout_evaluation --run-dir runs/<run_id> --split backtest
 ```
 
-Run benchmarks:
+## Run Benchmarks
+
+Run default benchmarks:
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml
@@ -162,9 +198,12 @@ PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config confi
 Multiple splits can be requested by repeating `--split`. Benchmark outputs are stored
 under `runs/benchmarks/<timestamp>-<config_name>-<config_hash>/` with `config.json`,
 `metadata.json`, one `benchmark_metrics_<split>.json` file per evaluated split, and a
-long-format `benchmark_metrics.csv` with one row per benchmark and split. The same
-runner works for historically calibrated synthetic price configs because it evaluates
-the dataset produced by the selected config.
+long-format `benchmark_metrics.csv` with one row per benchmark and split. The fitted
+LSMC policy is stored as `lsmc_policy.pkl`; when the oracle-cloned benchmark is
+included, its policy is stored as `oracle_cloned_policy.pt`. These artifacts allow
+diagnostic comparison plots without refitting benchmark policies. The same runner works
+for historically calibrated synthetic price configs because it evaluates the dataset
+produced by the selected config.
 
 For learning-curve plots, benchmark metrics can also be expanded onto the same
 training-step coordinates as RL `evaluations.csv`. When `training_config.total_timesteps`
@@ -234,6 +273,8 @@ LSMC uses `evaluation_config.lsmc_action_grid` and
 improves the storage-state coverage of the regression, but increases the fit cost
 roughly linearly.
 
+### Oracle Trajectories And Pretraining
+
 Perfect-foresight path-level trajectories can be logged explicitly:
 
 ```bash
@@ -276,23 +317,57 @@ PYTHONPATH=src python -m gas_storage_rl.pretraining.behavior_cloning \
 
 The pretraining run writes `pretrained_model.zip`, `policy_state_dict.pt`,
 `metadata.json`, and `training_history.json` under
-`runs/pretraining/<timestamp>-<config_name>-<algorithm>-<config_hash>/`. Start normal RL
-fine-tuning from the pretrained policy weights:
+`runs/pretraining/<timestamp>-<config_name>-<algorithm>-<config_hash>/`.
 
-```bash
-PYTHONPATH=src python -m gas_storage_rl.training.run_experiment \
-  --config configs/debug.yaml \
-  --algorithm ppo \
-  --pretrained-policy runs/pretraining/<run_id>/policy_state_dict.pt
-```
+## Plotting
 
 Plotting helpers live in `gas_storage_rl.plotting` and return Matplotlib figures for price paths, action paths, storage levels, cumulative cashflows, price-action scatter, learning curves, and return distributions.
 
-Create plots for a saved run:
+### Single-Run Diagnostics
+
+Create trajectory plots for one saved RL run:
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.plotting.plot_run --run-dir runs/<run_id> --split validation --path-id 0
 ```
+
+### RL Versus Benchmark Comparisons
+
+Create comparison plots across multiple RL runs and a benchmark run:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_comparison \
+  --rl-run-dir runs/<ppo_run_id> \
+  --rl-run-dir runs/<sac_run_id> \
+  --rl-run-dir runs/<td3_run_id> \
+  --benchmark-run-dir runs/benchmarks/<benchmark_run_id> \
+  --split validation
+```
+
+This creates a learning-curve plot with one line per RL run plus benchmark reference
+lines, a final return violin plot, and a relative-regret violin plot against
+`perfect_foresight` when the required `final_episode_metrics_<split>.csv` files are
+available. Relative regret is computed per episode as
+`(perfect_foresight_return - method_return) / abs(perfect_foresight_return)`, with a
+small numerical floor in the denominator.
+
+Create an on-demand policy diagnostic plot for one fixed path without logging all
+step-level validation trajectories:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_policy_comparison \
+  --benchmark-run-dir runs/benchmarks/<benchmark_run_id> \
+  --rl-run-dir runs/<ppo_run_id> \
+  --rl-run-dir runs/<sac_run_id> \
+  --split validation \
+  --path-id 17
+```
+
+The diagnostic figure overlays spot price, executed actions, storage levels, and
+cumulative cashflows for the selected RL policies plus rule-based, LSMC,
+oracle-cloned policy when available, and perfect foresight.
+
+### Price Path Plots
 
 Create raw 729-day synthetic price-path plots from the training split:
 

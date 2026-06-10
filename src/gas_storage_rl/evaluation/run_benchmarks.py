@@ -6,6 +6,7 @@ import argparse
 import csv
 import hashlib
 import json
+import pickle
 import platform
 import subprocess
 import sys
@@ -159,6 +160,7 @@ def benchmark_timeline_rows(
                     "is_baseline_reference": True,
                 }
                 row.update(metrics)
+                row["total_training_env_steps"] = int(step)
                 rows.append(row)
     return rows
 
@@ -480,6 +482,9 @@ def run_benchmarks(
     random_policy_seeds = random_policy_seeds or [int(config["seeds"]["eval_seed"])]
     if oracle_training_summary is not None:
         output["oracle_cloned_policy_training"] = oracle_training_summary
+    output["_benchmark_artifacts"] = {"lsmc": lsmc}
+    if oracle_cloned_policy is not None:
+        output["_benchmark_artifacts"]["oracle_cloned_policy"] = oracle_cloned_policy
     if write_perfect_foresight_trajectories:
         output["_perfect_foresight_trajectories"] = {}
     if write_final_episode_metrics:
@@ -644,6 +649,20 @@ def log_benchmark_results(
     final_episode_file_names = {}
     trajectory_counts = {}
     trajectory_file_names = {}
+    artifact_file_names = {}
+    artifacts = output.get("_benchmark_artifacts", {})
+    if "lsmc" in artifacts:
+        file_name = "lsmc_policy.pkl"
+        with (run_dir / file_name).open("wb") as file:
+            pickle.dump(artifacts["lsmc"], file)
+        artifact_file_names["lsmc"] = file_name
+    if "oracle_cloned_policy" in artifacts:
+        file_name = "oracle_cloned_policy.pt"
+        artifacts["oracle_cloned_policy"].save(
+            run_dir / file_name,
+            metadata=output.get("oracle_cloned_policy_training", {}),
+        )
+        artifact_file_names["oracle_cloned_policy"] = file_name
     for split, benchmarks in output["splits"].items():
         split_payload = {"split": split, "benchmarks": benchmarks}
         write_json(run_dir / f"benchmark_metrics_{split}.json", split_payload)
@@ -685,6 +704,8 @@ def log_benchmark_results(
     if write_final_episode_metrics:
         output.pop("_final_episode_metrics", None)
         output["final_episode_metric_files"] = final_episode_file_names
+    output.pop("_benchmark_artifacts", None)
+    output["benchmark_artifact_files"] = artifact_file_names
     return run_dir
 
 

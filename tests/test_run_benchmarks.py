@@ -89,6 +89,7 @@ def test_main_logs_train_and_validation_by_default(
     run_dir = benchmark_dirs[0]
     assert (run_dir / "benchmark_metrics_train.json").exists()
     assert (run_dir / "benchmark_metrics_validation.json").exists()
+    assert (run_dir / "lsmc_policy.pkl").exists()
     assert not (run_dir / "benchmark_metrics_test.json").exists()
 
     metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
@@ -267,6 +268,7 @@ def test_main_can_evaluate_oracle_cloned_policy_on_validation_and_test(
     assert "oracle_cloned_policy" not in train_metrics["benchmarks"]
     assert "oracle_cloned_policy" in validation_metrics["benchmarks"]
     assert "oracle_cloned_policy" in test_metrics["benchmarks"]
+    assert (run_dir / "oracle_cloned_policy.pt").exists()
     assert (
         validation_metrics["benchmarks"]["oracle_cloned_policy"][
             "imitation_training_samples"
@@ -342,6 +344,12 @@ def test_main_writes_benchmark_evaluations_on_timeline(
     }
     assert {row["split"] for row in rows} == {"validation"}
     assert all(row["is_baseline_reference"] == "True" for row in rows)
+    for method in {"random", "rule_based", "lsmc", "perfect_foresight"}:
+        assert {
+            int(row["total_training_env_steps"])
+            for row in rows
+            if row["method"] == method
+        } == {0, 20_000, 40_000, 50_000}
 
 
 def test_main_writes_final_episode_metrics_when_requested(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,12 @@ def main() -> None:
     """Runs manual evaluation on test or historical backtest data."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
-    parser.add_argument("--split", required=True, choices=["test", "backtest"])
+    parser.add_argument("--split", required=True, choices=["validation", "test", "backtest"])
+    parser.add_argument(
+        "--write-final-episode-metrics",
+        action="store_true",
+        help="Write final_episode_metrics_<split>.csv for per-path comparisons.",
+    )
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
@@ -38,14 +44,14 @@ def main() -> None:
         progress.step(3, "building backtest dataset")
         dataset = _build_backtest_evaluation_dataset(config, dataset)
     else:
-        progress.step(3, "using synthetic test split")
+        progress.step(3, f"using synthetic {args.split} split")
 
     env = GasStorageEnv(dataset, args.split, storage_params, **env_kwargs)
     progress.step(4, "loading model")
     model = _load_model(algorithm_name, run_dir / "final_model", env)
     total_training_env_steps = int(config["training_config"]["total_timesteps"])
     progress.step(5, f"evaluating split={args.split}")
-    metrics, _ = evaluate_policy_on_paths(
+    metrics, trajectories = evaluate_policy_on_paths(
         env,
         model,
         deterministic=bool(config["evaluation_config"].get("deterministic", True)),
@@ -57,6 +63,17 @@ def main() -> None:
     output_name = f"holdout_{args.split}_metrics.json"
     with (run_dir / output_name).open("w", encoding="utf-8") as file:
         json.dump(metrics, file, indent=2)
+    if args.write_final_episode_metrics:
+        _write_csv(
+            run_dir / f"final_episode_metrics_{args.split}.csv",
+            _episode_rows(
+                trajectories,
+                method=algorithm_name,
+                split=args.split,
+                dataset=dataset,
+                seed=config["seeds"].get("agent_seed"),
+            ),
+        )
     progress.finish("done")
     print(json.dumps({"output": str(run_dir / output_name), **metrics}, indent=2))
 
@@ -126,6 +143,61 @@ def _load_model(algorithm_name: str, model_path: Path, env: GasStorageEnv) -> An
 
         return TD3.load(model_path, env=env)
     raise ValueError(f"Unsupported algorithm_name: {algorithm_name}")
+
+
+def _episode_rows(
+    trajectories: list[dict[str, Any]],
+    method: str,
+    split: str,
+    dataset: PathDataset,
+    seed: int | None,
+) -> list[dict[str, Any]]:
+    """Returns one final metrics row per evaluated RL episode."""
+    from gas_storage_rl.evaluation.metrics import summarize_episode_infos
+
+    date_ranges = (
+        None
+        if dataset.date_ranges_by_split is None
+        else dataset.date_ranges_by_split.get(split)
+    )
+    rows = []
+    for trajectory in trajectories:
+        infos = trajectory["infos"]
+        if not infos:
+            continue
+        path_id = int(trajectory["path_id"])
+        summary = summarize_episode_infos(infos)
+        rows.append(
+            {
+                "method": method,
+                "algorithm_name": method,
+                "method_type": "rl",
+                "split": split,
+                "path_id": path_id,
+                "start_index": int(infos[0]["start_index"]),
+                "start_date": (
+                    None if date_ranges is None else date_ranges[path_id].get("start_date")
+                ),
+                "initial_inventory": float(infos[0]["initial_inventory"]),
+                "target_inventory": float(infos[-1]["target_terminal_inventory"]),
+                "seed": seed,
+                **summary,
+            }
+        )
+    return rows
+
+
+def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Writes rows in CSV format."""
+    fieldnames: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 if __name__ == "__main__":

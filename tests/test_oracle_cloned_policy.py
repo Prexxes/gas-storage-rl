@@ -71,3 +71,15 @@ def test_oracle_cloned_policy_is_deterministic_for_same_seed() -> None:
 
     observation = np.ones(6, dtype=np.float32)
     assert np.allclose(first.predict(observation)[0], second.predict(observation)[0])
+
+
+def test_oracle_cloned_policy_save_and_load(tmp_path) -> None:
+    """Saved oracle-cloned policies can be loaded for diagnostics."""
+    policy = OracleClonedPolicy(observation_dim=6, hidden_sizes=(8,), seed=4)
+    observation = np.ones(6, dtype=np.float32)
+    expected_action = policy.predict(observation)[0]
+
+    path = policy.save(tmp_path / "oracle_cloned_policy.pt")
+    loaded = OracleClonedPolicy.load(path)
+
+    np.testing.assert_allclose(loaded.predict(observation)[0], expected_action)

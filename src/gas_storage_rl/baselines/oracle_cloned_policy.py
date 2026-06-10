@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -48,8 +50,11 @@ class OracleClonedPolicy:
         """Initializes the policy."""
         torch.manual_seed(seed)
         self.observation_dim = int(observation_dim)
+        self.hidden_sizes = tuple(int(size) for size in hidden_sizes)
         self.device = torch.device(device)
-        self.model = _ActorNetwork(self.observation_dim, hidden_sizes).to(self.device)
+        self.model = _ActorNetwork(self.observation_dim, self.hidden_sizes).to(
+            self.device
+        )
 
     def fit(
         self,
@@ -128,3 +133,32 @@ class OracleClonedPolicy:
         with torch.no_grad():
             action = self.model(obs_tensor).cpu().numpy()[0]
         return np.asarray(action, dtype=np.float32), None
+
+    def save(self, path: str | Path, metadata: dict[str, Any] | None = None) -> Path:
+        """Saves policy weights and construction metadata."""
+        output_path = Path(path)
+        payload = {
+            "observation_dim": self.observation_dim,
+            "hidden_sizes": self.hidden_sizes,
+            "state_dict": self.model.state_dict(),
+            "metadata": metadata or {},
+        }
+        torch.save(payload, output_path)
+        return output_path
+
+    @classmethod
+    def load(
+        cls,
+        path: str | Path,
+        device: str = "cpu",
+    ) -> "OracleClonedPolicy":
+        """Loads a saved oracle-cloned policy."""
+        payload = torch.load(Path(path), map_location=device)
+        policy = cls(
+            observation_dim=int(payload["observation_dim"]),
+            hidden_sizes=tuple(payload["hidden_sizes"]),
+            device=device,
+        )
+        policy.model.load_state_dict(payload["state_dict"])
+        policy.model.eval()
+        return policy
