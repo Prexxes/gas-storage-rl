@@ -126,8 +126,22 @@ def main() -> None:
 
 
 def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
-    """Plots price, actions, storage, and cashflow for multiple methods."""
-    figure, axes = plt.subplots(4, 1, figsize=(11, 9), sharex=True)
+    """Plots price, actions, storage, and economic return for multiple methods."""
+    figure = plt.figure(figsize=(12, 9), layout="constrained")
+    grid = figure.add_gridspec(
+        4,
+        2,
+        width_ratios=[1.0, 0.025],
+        height_ratios=[1.0, 1.0, 1.0, 1.0],
+        hspace=0.14,
+        wspace=0.04,
+    )
+    axes = [figure.add_subplot(grid[0, 0])]
+    axes.extend(
+        figure.add_subplot(grid[row, 0], sharex=axes[0])
+        for row in range(1, 4)
+    )
+    colorbar_axis = figure.add_subplot(grid[1, 1])
     base_infos = trajectories[0]["infos"]
     steps = np.array([info["current_step"] for info in base_infos])
     prices = np.array([info["price"] for info in base_infos])
@@ -135,24 +149,61 @@ def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
     axes[0].set_ylabel("Price")
     axes[0].legend(fontsize=8)
 
+    action_matrix = np.array(
+        [
+            [info["executed_action"] for info in trajectory["infos"]]
+            for trajectory in trajectories
+        ],
+        dtype=np.float64,
+    )
+    step_edges = np.arange(len(steps) + 1, dtype=np.float64) - 0.5
+    method_edges = np.arange(len(trajectories) + 1, dtype=np.float64)
+    action_heatmap = axes[1].pcolormesh(
+        step_edges,
+        method_edges,
+        action_matrix,
+        cmap="RdBu_r",
+        vmin=-1.0,
+        vmax=1.0,
+        shading="flat",
+    )
+    axes[1].set_yticks(
+        np.arange(len(trajectories), dtype=np.float64) + 0.5,
+        [trajectory["method"] for trajectory in trajectories],
+    )
+    axes[1].invert_yaxis()
+    axes[1].set_ylabel("Method")
+    figure.colorbar(
+        action_heatmap,
+        cax=colorbar_axis,
+        label="Executed action",
+    )
+
     for trajectory in trajectories:
         label = trajectory["method"]
         infos = trajectory["infos"]
         x_values = np.array([info["current_step"] for info in infos])
-        actions = np.array([info["executed_action"] for info in infos])
         storage = np.array([info["storage_level"] for info in infos])
-        cashflow = np.cumsum([info["raw_cashflow"] for info in infos])
-        axes[1].step(x_values, actions, where="post", label=label)
+        economic_rewards = np.array(
+            [
+                info.get(
+                    "economic_reward_raw",
+                    info["raw_cashflow"] + info.get("terminal_penalty", 0.0),
+                )
+                for info in infos
+            ],
+            dtype=np.float64,
+        )
+        cumulative_return = np.cumsum(economic_rewards)
         axes[2].plot(x_values, storage, label=label)
-        axes[3].plot(x_values, cashflow, label=label)
+        axes[3].plot(x_values, cumulative_return, label=label)
 
-    axes[1].set_ylabel("Action")
     axes[2].set_ylabel("Storage")
-    axes[3].set_ylabel("Cumulative cashflow")
+    axes[3].set_ylabel("Cumulative raw return")
     axes[3].set_xlabel("Episode timestep")
-    for axis in axes:
+    for axis in (axes[0], axes[2], axes[3]):
         axis.grid(alpha=0.25)
-    axes[1].legend(fontsize=7, ncol=2)
+    axes[2].legend(fontsize=7, ncol=2)
     return figure
 
 
@@ -190,6 +241,7 @@ def _perfect_foresight_trajectory(
         terminal_penalty = 0.0
         if step == len(path) - 1:
             terminal_penalty = -lambda_terminal * abs(storage_level - initial)
+        economic_reward_raw = raw_cashflow + terminal_penalty
         infos.append(
             {
                 "current_step": step,
@@ -199,6 +251,7 @@ def _perfect_foresight_trajectory(
                 "storage_level": storage_level,
                 "raw_cashflow": raw_cashflow,
                 "terminal_penalty": terminal_penalty,
+                "economic_reward_raw": economic_reward_raw,
                 "start_index": int(dataset.get_start_indices(split)[path_id]),
                 "initial_inventory": initial,
                 "target_terminal_inventory": initial,
@@ -228,7 +281,6 @@ def _load_rl_model(algorithm_name: str, model_path: Path, env: GasStorageEnv) ->
 
 def _save(figure: plt.Figure, path: Path) -> None:
     """Saves and closes a Matplotlib figure."""
-    figure.tight_layout()
     figure.savefig(path, dpi=160)
     plt.close(figure)
 

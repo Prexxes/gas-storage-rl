@@ -363,9 +363,10 @@ PYTHONPATH=src python -m gas_storage_rl.plotting.plot_policy_comparison \
   --path-id 17
 ```
 
-The diagnostic figure overlays spot price, executed actions, storage levels, and
-cumulative cashflows for the selected RL policies plus rule-based, LSMC,
-oracle-cloned policy when available, and perfect foresight.
+The diagnostic figure shows spot price, an executed-action heatmap with one row per
+method, storage levels, and cumulative raw economic returns for the selected RL policies plus
+rule-based, LSMC, oracle-cloned policy when available, and perfect foresight. The
+action heatmap uses a fixed scale from withdrawal (`-1`) to injection (`1`).
 
 ### Price Path Plots
 
