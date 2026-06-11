@@ -10,7 +10,7 @@ environment_config:
   initial_inventory_std_fraction: 0.05
   price_scale: 50.0
   reward_scale: 50.0
-  penalty_factor: 0.5
+  penalty_factor: 1.0
   efficiency: 1.0
   transaction_cost: 0.0
   leakage: 0.0

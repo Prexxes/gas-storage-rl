@@ -42,14 +42,7 @@ class PerfectForesightBaseline:
             if initial_inventory is None
             else float(initial_inventory)
         )
-        if target_inventory is None:
-            target = (
-                self.storage_params.target_terminal_inventory
-                if initial_inventory is None
-                else initial
-            )
-        else:
-            target = float(target_inventory)
+        target = initial if target_inventory is None else float(target_inventory)
         horizon = len(prices)
         n_actions = horizon
         n_levels = horizon + 1

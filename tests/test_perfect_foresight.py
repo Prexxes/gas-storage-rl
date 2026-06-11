@@ -30,3 +30,38 @@ def test_perfect_foresight_uses_episode_initial_and_target_inventory() -> None:
     assert result.success
     assert np.isclose(result.storage_levels[0], 1.0)
     assert np.isclose(result.storage_levels[-1], 1.0)
+
+
+def test_perfect_foresight_defaults_target_to_initial_inventory() -> None:
+    """LP defaults to ending at the initial inventory, not storage param target."""
+    baseline = PerfectForesightBaseline(
+        StorageParams(
+            capacity=2.0,
+            initial_inventory=1.0,
+            target_terminal_inventory=0.0,
+        ),
+        lambda_terminal=100.0,
+    )
+
+    result = baseline.solve_path(np.array([100.0, 10.0]))
+
+    assert result.success
+    assert np.isclose(result.storage_levels[0], 1.0)
+    assert np.isclose(result.storage_levels[-1], 1.0)
+
+
+def test_perfect_foresight_respects_explicit_target_inventory() -> None:
+    """LP still supports an explicitly requested terminal inventory."""
+    baseline = PerfectForesightBaseline(
+        StorageParams(capacity=2.0, initial_inventory=1.0),
+        lambda_terminal=100.0,
+    )
+
+    result = baseline.solve_path(
+        np.array([100.0, 10.0]),
+        target_inventory=0.0,
+    )
+
+    assert result.success
+    assert np.isclose(result.storage_levels[0], 1.0)
+    assert np.isclose(result.storage_levels[-1], 0.0)
