@@ -5,6 +5,7 @@ from __future__ import annotations
 from gas_storage_rl.training.config import (
     _build_price_process_config,
     build_effective_run_config,
+    seeds_for_run,
 )
 
 
@@ -109,3 +110,18 @@ def test_nested_price_process_config_can_be_loaded_again() -> None:
         "seasonal_amplitude": 0.25,
         "_environment_name": "ou",
     }
+
+
+def test_seeds_for_run_varies_training_but_preserves_dataset_and_eval() -> None:
+    """Seed groups vary RL randomness while keeping evaluation data fixed."""
+    base = _base_config()["seeds"]
+
+    first = seeds_for_run(base, 0)
+    second = seeds_for_run(base, 1)
+    repeated = seeds_for_run(base, 0)
+
+    assert first == repeated
+    assert first["dataset_seed"] == second["dataset_seed"] == base["dataset_seed"]
+    assert first["eval_seed"] == second["eval_seed"] == base["eval_seed"]
+    assert first["agent_seed"] != second["agent_seed"]
+    assert first["env_seed"] != second["env_seed"]

@@ -134,6 +134,43 @@ Train one RL agent:
 PYTHONPATH=src python -m gas_storage_rl.training.run_experiment --config configs/debug.yaml --algorithm ppo
 ```
 
+Run a sequential group with `training_config.n_seeds` independent training seeds:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
+  --config configs/historical_jump_c200.yaml \
+  --algorithm ppo
+```
+
+Override the configured group size when needed:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
+  --config configs/historical_jump_c200.yaml \
+  --algorithm ppo \
+  --n-seeds 3
+```
+
+For each `seed_index`, the group runner derives deterministic `env_seed` and
+`agent_seed` values from `master_seed`. The `dataset_seed` and `eval_seed` remain
+constant, so all runs use the same path datasets and fixed validation/test episodes
+while varying network initialization, exploration, minibatch sampling, and the sampled
+training-episode sequence. The same `(env_seed, agent_seed)` pair is derived for a
+given `seed_index` independently of the selected algorithm, which supports paired
+PPO/SAC/TD3 experiment groups.
+
+Group metadata is stored under:
+
+```text
+runs/experiment_groups/<group_id>/
+  group_config.json
+  group_metadata.json
+  runs.csv
+```
+
+Each seed still produces a complete normal RL run under `runs/<run_id>/`. If one seed
+fails, the failure is recorded in `runs.csv` and the remaining seeds continue.
+
 Each RL run writes:
 
 - `config.json`

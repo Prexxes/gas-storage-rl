@@ -1,0 +1,64 @@
+"""Tests for sequential experiment groups."""
+
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+from gas_storage_rl.training import run_experiment_group
+
+
+def test_experiment_group_records_runs_and_continues_after_failure(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """One failed seed is recorded without preventing later seeds from running."""
+    config = {
+        "logging_config": {"run_dir": str(tmp_path / "runs")},
+        "training_config": {"n_seeds": 3},
+        "seeds": {
+            "master_seed": 10,
+            "dataset_seed": 20,
+            "env_seed": 30,
+            "agent_seed": 40,
+            "eval_seed": 50,
+        },
+    }
+    called_indices = []
+
+    def fake_run_experiment(config, algorithm, **kwargs):
+        del algorithm
+        seed_index = kwargs["seed_index"]
+        called_indices.append(seed_index)
+        if seed_index == 1:
+            raise RuntimeError("intentional failure")
+        return {"run_dir": str(tmp_path / f"run-{seed_index}")}
+
+    monkeypatch.setattr(
+        run_experiment_group,
+        "run_experiment",
+        fake_run_experiment,
+    )
+
+    summary = run_experiment_group.run_experiment_group(
+        config,
+        "debug",
+        "ppo",
+    )
+
+    assert called_indices == [0, 1, 2]
+    assert summary["completed_runs"] == 2
+    assert summary["failed_runs"] == 1
+    rows = list(
+        csv.DictReader(
+            (Path(summary["group_dir"]) / "runs.csv").open(
+                newline="",
+                encoding="utf-8",
+            )
+        )
+    )
+    assert [row["status"] for row in rows] == ["completed", "failed", "completed"]
+    assert {row["dataset_seed"] for row in rows} == {"20"}
+    assert {row["eval_seed"] for row in rows} == {"50"}
+    assert len({row["env_seed"] for row in rows}) == 3
+    assert len({row["agent_seed"] for row in rows}) == 3

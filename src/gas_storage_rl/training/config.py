@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from gas_storage_rl.data.path_dataset import PathDataset, load_or_generate_price_dataset
@@ -17,6 +18,20 @@ def load_config(path: str | Path) -> dict[str, Any]:
     """Loads a YAML configuration file."""
     with Path(path).open("r", encoding="utf-8") as file:
         return yaml.safe_load(file)
+
+
+def seeds_for_run(seeds: dict[str, Any], seed_index: int) -> dict[str, int]:
+    """Returns reproducible per-run seeds while preserving dataset/eval seeds."""
+    if seed_index < 0:
+        raise ValueError("seed_index must be non-negative")
+    output = {key: int(value) for key, value in seeds.items()}
+    sequence = np.random.SeedSequence([int(seeds["master_seed"]), seed_index])
+    env_sequence, agent_sequence = sequence.spawn(2)
+    output["env_seed"] = int(env_sequence.generate_state(1, dtype=np.uint32)[0])
+    output["agent_seed"] = int(
+        agent_sequence.generate_state(1, dtype=np.uint32)[0]
+    )
+    return output
 
 
 def build_effective_run_config(
