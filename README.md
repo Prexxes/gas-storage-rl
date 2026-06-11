@@ -366,7 +366,9 @@ PYTHONPATH=src python -m gas_storage_rl.plotting.plot_policy_comparison \
 The diagnostic figure shows spot price, an executed-action heatmap with one row per
 method, storage levels, and cumulative raw economic returns for the selected RL policies plus
 rule-based, LSMC, oracle-cloned policy when available, and perfect foresight. The
-action heatmap uses a fixed scale from withdrawal (`-1`) to injection (`1`).
+action heatmap uses a fixed scale from withdrawal (`-1`) to injection (`1`). A yellow
+overlay on the upper half of a cell indicates that the requested action was clipped
+before execution.
 
 ### Price Path Plots
 

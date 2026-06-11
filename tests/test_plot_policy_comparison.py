@@ -44,6 +44,24 @@ def test_action_colorbar_does_not_shrink_heatmap_width() -> None:
     plt.close(figure)
 
 
+def test_action_heatmap_marks_clipped_action_upper_half() -> None:
+    """A clipped action receives a yellow overlay on the upper cell half."""
+    infos = _infos([0.5, -1.0])
+    infos[0]["requested_action"] = 1.0
+    trajectories = [{"method": "ppo", "infos": infos}]
+
+    figure = plot_policy_comparison(trajectories)
+    action_axis = figure.axes[1]
+
+    assert len(action_axis.patches) == 1
+    overlay = action_axis.patches[0]
+    assert overlay.get_xy() == (-0.5, 0.0)
+    assert overlay.get_width() == 1.0
+    assert overlay.get_height() == 0.5
+    assert overlay.get_facecolor()[:3] == (1.0, 0.8431372549019608, 0.0)
+    plt.close(figure)
+
+
 def test_policy_comparison_plots_cumulative_raw_return() -> None:
     """The final diagnostic value includes the terminal penalty."""
     infos = _infos([1.0, -1.0])

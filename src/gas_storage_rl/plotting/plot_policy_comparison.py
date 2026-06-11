@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Patch, Rectangle
 
 from gas_storage_rl.baselines.oracle_cloned_policy import OracleClonedPolicy
 from gas_storage_rl.baselines.perfect_foresight import PerfectForesightBaseline
@@ -173,6 +174,32 @@ def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
     )
     axes[1].invert_yaxis()
     axes[1].set_ylabel("Method")
+    for method_index, trajectory in enumerate(trajectories):
+        for info in trajectory["infos"]:
+            requested_action = float(
+                info.get("requested_action", info["executed_action"])
+            )
+            executed_action = float(info["executed_action"])
+            if abs(requested_action - executed_action) <= 1e-8:
+                continue
+            axes[1].add_patch(
+                Rectangle(
+                    (float(info["current_step"]) - 0.5, float(method_index)),
+                    1.0,
+                    0.5,
+                    facecolor="gold",
+                    edgecolor="none",
+                    alpha=0.85,
+                )
+            )
+    axes[1].legend(
+        handles=[Patch(facecolor="gold", alpha=0.85, label="Requested action clipped")],
+        loc="upper left",
+        bbox_to_anchor=(0.0, 1.02),
+        borderaxespad=0.0,
+        fontsize=7,
+        framealpha=0.9,
+    )
     figure.colorbar(
         action_heatmap,
         cax=colorbar_axis,
