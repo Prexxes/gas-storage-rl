@@ -12,6 +12,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
+
+MEAN_COLOR = "tab:red"
+MEDIAN_COLOR = "tab:blue"
 
 
 def main() -> None:
@@ -122,10 +126,21 @@ def _violin_plot(
         for method in methods
     ]
     figure, axis = plt.subplots(figsize=(max(8, len(methods) * 0.9), 5))
-    axis.violinplot(values, showmeans=True, showmedians=True)
+    violin = axis.violinplot(values, showmeans=True, showmedians=True)
+    violin["cmeans"].set_color(MEAN_COLOR)
+    violin["cmeans"].set_linewidth(2.0)
+    violin["cmedians"].set_color(MEDIAN_COLOR)
+    violin["cmedians"].set_linewidth(2.0)
     axis.set_xticks(np.arange(1, len(methods) + 1), methods, rotation=30, ha="right")
     axis.set_ylabel(ylabel)
     axis.grid(axis="y", alpha=0.25)
+    axis.legend(
+        handles=[
+            Line2D([0], [0], color=MEAN_COLOR, linewidth=2.0, label="Mean"),
+            Line2D([0], [0], color=MEDIAN_COLOR, linewidth=2.0, label="Median"),
+        ],
+        loc="best",
+    )
     return figure
 
 
