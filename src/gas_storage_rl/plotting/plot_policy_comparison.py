@@ -146,7 +146,13 @@ def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
     base_infos = trajectories[0]["infos"]
     steps = np.array([info["current_step"] for info in base_infos])
     prices = np.array([info["price"] for info in base_infos])
-    axes[0].plot(steps, prices, color="black", label="spot price")
+    start_index = base_infos[0].get("start_index")
+    price_label = (
+        f"Spot price (start index: {start_index})"
+        if start_index is not None
+        else "Spot price"
+    )
+    axes[0].plot(steps, prices, color="black", label=price_label)
     axes[0].set_ylabel("Price")
     axes[0].legend(fontsize=8)
 

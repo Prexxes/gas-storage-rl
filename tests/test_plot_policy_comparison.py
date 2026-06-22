@@ -8,8 +8,10 @@ from gas_storage_rl.plotting.plot_policy_comparison import plot_policy_compariso
 
 def test_policy_comparison_uses_action_heatmap() -> None:
     """Bang-bang actions are rendered as a method-by-step heatmap."""
+    ppo_infos = _infos([-1.0, 1.0, -1.0])
+    ppo_infos[0]["start_index"] = 125
     trajectories = [
-        {"method": "ppo", "infos": _infos([-1.0, 1.0, -1.0])},
+        {"method": "ppo", "infos": ppo_infos},
         {"method": "lsmc", "infos": _infos([1.0, 0.0, -1.0])},
     ]
 
@@ -23,6 +25,9 @@ def test_policy_comparison_uses_action_heatmap() -> None:
         "lsmc",
     ]
     assert action_axis.get_ylabel() == "Method"
+    assert figure.axes[0].get_legend().get_texts()[0].get_text() == (
+        "Spot price (start index: 125)"
+    )
     plt.close(figure)
 
 
