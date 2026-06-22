@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Patch, Rectangle
+from matplotlib.lines import Line2D
 
 from gas_storage_rl.baselines.oracle_cloned_policy import OracleClonedPolicy
 from gas_storage_rl.baselines.perfect_foresight import PerfectForesightBaseline
@@ -152,16 +152,23 @@ def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
 
     action_matrix = np.array(
         [
-            [info["executed_action"] for info in trajectory["infos"]]
+            action
             for trajectory in trajectories
+            for action in (
+                [
+                    info.get("requested_action", info["executed_action"])
+                    for info in trajectory["infos"]
+                ],
+                [info["executed_action"] for info in trajectory["infos"]],
+            )
         ],
         dtype=np.float64,
     )
     step_edges = np.arange(len(steps) + 1, dtype=np.float64) - 0.5
-    method_edges = np.arange(len(trajectories) + 1, dtype=np.float64)
+    action_edges = np.arange(2 * len(trajectories) + 1, dtype=np.float64) / 2.0
     action_heatmap = axes[1].pcolormesh(
         step_edges,
-        method_edges,
+        action_edges,
         action_matrix,
         cmap="RdBu_r",
         vmin=-1.0,
@@ -174,26 +181,27 @@ def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
     )
     axes[1].invert_yaxis()
     axes[1].set_ylabel("Method")
-    for method_index, trajectory in enumerate(trajectories):
-        for info in trajectory["infos"]:
-            requested_action = float(
-                info.get("requested_action", info["executed_action"])
-            )
-            executed_action = float(info["executed_action"])
-            if abs(requested_action - executed_action) <= 1e-8:
-                continue
-            axes[1].add_patch(
-                Rectangle(
-                    (float(info["current_step"]) - 0.5, float(method_index)),
-                    1.0,
-                    0.5,
-                    facecolor="gold",
-                    edgecolor="none",
-                    alpha=0.85,
-                )
-            )
+    clipped_action_boundaries = [
+        (float(trajectory_index) + 0.5, float(info["current_step"]) - 0.5)
+        for trajectory_index, trajectory in enumerate(trajectories)
+        for info in trajectory["infos"]
+        if abs(
+            float(info.get("requested_action", info["executed_action"]))
+            - float(info["executed_action"])
+        )
+        > 1e-8
+    ]
+    if clipped_action_boundaries:
+        boundary_y_values, boundary_x_min_values = zip(*clipped_action_boundaries)
+        axes[1].hlines(
+            boundary_y_values,
+            boundary_x_min_values,
+            np.asarray(boundary_x_min_values) + 1.0,
+            colors="gold",
+            linewidths=3.0,
+        )
     axes[1].legend(
-        handles=[Patch(facecolor="gold", alpha=0.85, label="Requested action clipped")],
+        handles=[Line2D([0], [0], color="gold", linewidth=3.0, label="Action clipped")],
         loc="upper left",
         bbox_to_anchor=(0.0, 1.02),
         borderaxespad=0.0,
@@ -203,7 +211,7 @@ def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
     figure.colorbar(
         action_heatmap,
         cax=colorbar_axis,
-        label="Executed action",
+        label="Action (top: requested, bottom: executed)",
     )
 
     for trajectory in trajectories:

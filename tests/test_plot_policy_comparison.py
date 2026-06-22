@@ -44,21 +44,27 @@ def test_action_colorbar_does_not_shrink_heatmap_width() -> None:
     plt.close(figure)
 
 
-def test_action_heatmap_marks_clipped_action_upper_half() -> None:
-    """A clipped action receives a yellow overlay on the upper cell half."""
+def test_action_heatmap_shows_requested_action_above_executed_action() -> None:
+    """Each method row shows requested action above executed action."""
     infos = _infos([0.5, -1.0])
     infos[0]["requested_action"] = 1.0
     trajectories = [{"method": "ppo", "infos": infos}]
 
     figure = plot_policy_comparison(trajectories)
     action_axis = figure.axes[1]
+    heatmap = action_axis.collections[0]
 
-    assert len(action_axis.patches) == 1
-    overlay = action_axis.patches[0]
-    assert overlay.get_xy() == (-0.5, 0.0)
-    assert overlay.get_width() == 1.0
-    assert overlay.get_height() == 0.5
-    assert overlay.get_facecolor()[:3] == (1.0, 0.8431372549019608, 0.0)
+    np.testing.assert_allclose(heatmap.get_array(), [[1.0, -1.0], [0.5, -1.0]])
+    assert len(action_axis.collections) == 2
+    separator = action_axis.collections[1]
+    np.testing.assert_allclose(
+        separator.get_colors()[0][:3], [1.0, 0.8431372549019608, 0.0]
+    )
+    assert separator.get_linewidths()[0] == 3.0
+    np.testing.assert_allclose(
+        separator.get_segments(), [[[-0.5, 0.5], [0.5, 0.5]]]
+    )
+    assert action_axis.get_legend().get_texts()[0].get_text() == "Action clipped"
     plt.close(figure)
 
 
