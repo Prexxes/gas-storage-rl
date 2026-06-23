@@ -4,13 +4,18 @@ This repository evaluates PPO, SAC, and TD3 for natural gas storage asset valuat
 
 ## Environments
 
-The MVP uses three Gymnasium-compatible settings:
+The MVP uses three Gymnasium-compatible synthetic settings:
 
-- Deterministic seasonal: `log_price_t = seasonal_log_price_t`
-- Seasonal OU: `log_price_t = seasonal_log_price_t + ou_residual_t`
-- Seasonal OU jump/stress: `log_price_t = seasonal_log_price_t + ou_residual_t + jump_component_t`
+- Deterministic seasonal: `price_t = 2 + sin(2 * pi * t / 365)`
+- Seasonal OU: `price_t = 2 + sin(2 * pi * t / 365) + X_t`
+- Seasonal OU jump/stress: `price_t = 2 + sin(2 * pi * t / 365) + X_t + J_t`
 
-Prices are generated as `price_t = exp(log_price_t)` and are strictly positive. Pretrain, train, validation, and test paths are generated from deterministic, disjoint seeds. Deterministic environments repeat the same seasonal path through the same dataset interface.
+`X_t` is an exactly discretized additive Ornstein-Uhlenbeck process with speed
+of mean reversion `1.0`, long-term mean `0.0`, volatility `1.2`, initial value
+`0.0`, and a daily time step of `1 / 365`. The synthetic processes deliberately permit negative prices as a
+controlled RL benchmark. Pretrain, train, validation, and test paths are
+generated from deterministic, disjoint seeds. Deterministic environments repeat
+the same seasonal path through the same dataset interface.
 
 Generated price datasets are cached by default under `data/cache/{dataset_hash}/` as `pretrain.npy`, `train.npy`, `validation.npy`, `test.npy`, and `metadata.json` when `dataset_config.n_pretrain_paths` is positive. The hash depends on the environment name, path counts, episode length, dataset seed, and price-process parameters. Set `dataset_config.force_regenerate: true` to overwrite an existing matching cache. Project configs use `n_pretrain_paths: 5000` while keeping the existing train, validation, and test path counts unchanged.
 
@@ -28,7 +33,8 @@ PYTHONPATH=src python -m gas_storage_rl.data.build_historical_datasets --config 
 
 The synthetic splits are stored under `data/cache/{dataset_hash}/`. Historical backtest windows are stored separately under `data/cache/backtest/{dataset_hash}/` as `backtest.npy` plus metadata with each episode start and end date.
 
-Historically calibrated synthetic paths support three environment variants:
+Historically calibrated synthetic paths remain log-additive and strictly positive.
+They support three environment variants:
 
 - `historical_deterministic`: calibrated monthly log seasonality only
 - `historical_ou`: calibrated seasonality plus AR(1)/OU residual noise

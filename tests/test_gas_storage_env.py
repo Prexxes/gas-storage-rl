@@ -231,6 +231,23 @@ def test_training_reset_samples_contiguous_windows_reproducibly() -> None:
     assert next_obs[1] == raw_path[0, expected_start + 1]
 
 
+def test_observation_space_accepts_negative_prices() -> None:
+    """Additive synthetic prices may be negative in observations."""
+    prices = np.array([[-1.0, 0.0]], dtype=np.float32)
+    dataset = PathDataset({"train": prices}, {"train": 1})
+    env = GasStorageEnv(
+        dataset,
+        "train",
+        StorageParams(capacity=2.0),
+        price_scale=2.0,
+    )
+
+    observation, _ = env.reset()
+
+    assert observation[1] == -0.5
+    assert env.observation_space.contains(observation)
+
+
 def test_explicit_path_id_uses_fixed_start_index() -> None:
     """Evaluation resets use the stored deterministic start per path."""
     raw_path = np.arange(1.0, 8.0, dtype=np.float32).reshape(1, -1)

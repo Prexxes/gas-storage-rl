@@ -15,14 +15,14 @@ def simulate_jump_component(
     stress_multiplier: float = 1.5,
     seed: int | None = None,
 ) -> np.ndarray:
-    """Simulates sparse additive log-price jumps.
+    """Simulates sparse additive jumps in price units.
 
     Args:
         n_paths: Number of paths.
         episode_length: Number of time steps.
         jump_probability: Daily probability of a regular jump.
-        jump_mean: Mean regular jump size in log space.
-        jump_std: Standard deviation of regular jump size in log space.
+        jump_mean: Mean regular jump size in price units.
+        jump_std: Standard deviation of regular jump size in price units.
         stress_probability: Daily probability of a larger stress jump.
         stress_multiplier: Multiplier applied to stress jump volatility.
         seed: Random seed.

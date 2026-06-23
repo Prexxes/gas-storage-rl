@@ -2,16 +2,30 @@
 
 ## Price Processes
 
-All environments use log-additive synthetic gas spot prices:
+The three non-historical environments use additive synthetic prices:
+
+```text
+price_t = 2 + sin(2 * pi * t / 365) + X_t + J_t
+```
+
+The deterministic environment sets `X_t` and `J_t` to zero. The OU environment
+uses an exactly discretized Ornstein-Uhlenbeck process with speed of mean
+reversion `1.0`, long-term mean `0.0`, volatility `1.2`, and initial value `0.0`.
+One daily transition uses a time step of `1 / 365`, so the process evolves
+smoothly over an annual horizon.
+The jump environment adds sparse regular jumps and larger stress jumps. Synthetic
+prices may be negative by design. Configurable fallback parameters define the
+default synthetic processes.
+
+## Historical Calibration
+
+Historically calibrated environments remain separate from the additive synthetic
+benchmark. They use log-additive prices and are strictly positive:
 
 ```text
 log_price_t = seasonal_log_price_t + ou_residual_t + jump_component_t
 price_t = exp(log_price_t)
 ```
-
-The deterministic environment sets both stochastic terms to zero. The OU environment includes a mean-reverting residual. The jump environment adds sparse regular jumps and larger stress jumps. Configurable fallback parameters define the default synthetic processes.
-
-## Historical Calibration
 
 The historical pipeline enforces a chronological split. Calibration inputs must end on or before `2024-12-31`; historical backtest inputs must start on or after `2025-01-01`. Backtest observations are never used to estimate the synthetic data-generating process.
 

@@ -19,13 +19,16 @@ from gas_storage_rl.prices.seasonal import (
 
 
 def default_price_parameters() -> dict[str, float]:
-    """Returns fallback synthetic price process parameters."""
+    """Returns fallback parameters for additive synthetic price processes."""
     return {
-        "base_price": 50.0,
-        "seasonal_amplitude": 0.25,
-        "seasonal_phase": 0.0,
-        "ou_mean_reversion": 0.08,
-        "ou_volatility": 0.12,
+        "seasonal_level": 2.0,
+        "seasonal_amplitude": 1.0,
+        "seasonal_period": 365.0,
+        "ou_speed_of_mean_reversion": 1.0,
+        "ou_long_term_mean": 0.0,
+        "ou_volatility": 1.2,
+        "ou_start_value": 0.0,
+        "ou_time_step": 1.0 / 365.0,
         "jump_probability": 0.02,
         "jump_mean": 0.0,
         "jump_std": 0.35,

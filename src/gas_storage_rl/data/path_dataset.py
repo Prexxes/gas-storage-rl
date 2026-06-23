@@ -131,7 +131,7 @@ def compute_dataset_hash(config: PriceGeneratorConfig) -> str:
         "environment_name": config.environment_name,
         "episode_length": config.episode_length,
         "simulation_length": config.simulation_length,
-        "rolling_window_version": 1,
+        "rolling_window_version": 2,
         "n_pretrain_paths": config.n_pretrain_paths,
         "n_train_paths": config.n_train_paths,
         "n_validation_paths": config.n_validation_paths,

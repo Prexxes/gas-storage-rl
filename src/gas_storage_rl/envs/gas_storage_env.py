@@ -67,7 +67,7 @@ class GasStorageEnv(gym.Env):
             [np.inf, np.inf, 1.0, 1.0, 1.0, 1.0],
             dtype=np.float32,
         )
-        low = np.array([0.0, 0.0, -1.0, -1.0, 0.0, 0.0], dtype=np.float32)
+        low = np.array([0.0, -np.inf, -1.0, -1.0, 0.0, 0.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
         self.action_space = spaces.Box(
             low=np.array([-1.0], dtype=np.float32),

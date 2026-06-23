@@ -10,10 +10,9 @@ import pandas as pd
 
 from gas_storage_rl.prices.calibration import default_price_parameters
 from gas_storage_rl.prices.jump_process import simulate_jump_component
-from gas_storage_rl.prices.ou_process import simulate_ou_residuals
+from gas_storage_rl.prices.ou_process import simulate_additive_ou_process
 from gas_storage_rl.prices.seasonal import (
     evaluate_fourier_monthly_seasonality,
-    seasonal_log_curve,
 )
 
 
@@ -63,7 +62,7 @@ def generate_price_paths(
     seed: int,
     params: dict[str, Any] | None = None,
 ) -> np.ndarray:
-    """Generates strictly positive synthetic spot price paths.
+    """Generates synthetic or historically calibrated spot price paths.
 
     Args:
         environment_name: One of ``deterministic``, ``ou``, ``jump``,
@@ -99,39 +98,53 @@ def generate_price_paths(
             in {"historical_jump", "historical_calibrated"},
         )
 
-    seasonal = seasonal_log_curve(
+    if environment_name not in {"deterministic", "ou", "jump"}:
+        raise ValueError(f"Unknown environment_name: {environment_name}")
+    return generate_additive_price_paths(
+        environment_name=environment_name,
+        n_paths=n_paths,
         episode_length=episode_length,
-        base_price=process_params["base_price"],
-        amplitude=process_params["seasonal_amplitude"],
-        phase=process_params["seasonal_phase"],
-        annual_period=365,
+        seed=seed,
+        params=process_params,
     )
-    log_prices = np.tile(seasonal, (n_paths, 1))
 
+
+def generate_additive_price_paths(
+    environment_name: str,
+    n_paths: int,
+    episode_length: int,
+    seed: int,
+    params: dict[str, Any],
+) -> np.ndarray:
+    """Generates additive synthetic price paths that may become negative."""
+    days = np.arange(episode_length, dtype=np.float64)
+    seasonal = params["seasonal_level"] + params["seasonal_amplitude"] * np.sin(
+        2.0 * np.pi * days / params["seasonal_period"]
+    )
+    prices = np.tile(seasonal, (n_paths, 1))
     if environment_name in {"ou", "jump"}:
-        log_prices += simulate_ou_residuals(
+        prices += simulate_additive_ou_process(
             n_paths=n_paths,
             episode_length=episode_length,
-            mean_reversion=process_params["ou_mean_reversion"],
-            volatility=process_params["ou_volatility"],
+            speed_of_mean_reversion=params["ou_speed_of_mean_reversion"],
+            long_term_mean=params["ou_long_term_mean"],
+            volatility=params["ou_volatility"],
+            start_value=params["ou_start_value"],
+            time_step=params["ou_time_step"],
             seed=seed,
         )
     if environment_name == "jump":
-        log_prices += simulate_jump_component(
+        prices += simulate_jump_component(
             n_paths=n_paths,
             episode_length=episode_length,
-            jump_probability=process_params["jump_probability"],
-            jump_mean=process_params["jump_mean"],
-            jump_std=process_params["jump_std"],
-            stress_probability=process_params["stress_probability"],
-            stress_multiplier=process_params["stress_multiplier"],
+            jump_probability=params["jump_probability"],
+            jump_mean=params["jump_mean"],
+            jump_std=params["jump_std"],
+            stress_probability=params["stress_probability"],
+            stress_multiplier=params["stress_multiplier"],
             seed=seed + 10_000,
         )
-    if environment_name not in {"deterministic", "ou", "jump"}:
-        raise ValueError(f"Unknown environment_name: {environment_name}")
-
-    prices = np.exp(log_prices)
-    return np.maximum(prices, np.finfo(np.float64).tiny).astype(np.float32)
+    return prices.astype(np.float32)
 
 
 def generate_calibrated_price_paths(
