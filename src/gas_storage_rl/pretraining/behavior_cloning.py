@@ -74,6 +74,18 @@ def load_trajectory_samples(
     )
 
 
+def load_trajectory_rows(trajectory_path: str | Path) -> list[dict[str, Any]]:
+    """Loads serialized perfect-foresight trajectories from a JSONL file."""
+    trajectories = []
+    with Path(trajectory_path).open("r", encoding="utf-8") as file:
+        for line in file:
+            if line.strip():
+                trajectories.append(json.loads(line))
+    if not trajectories:
+        raise ValueError("No trajectory samples found")
+    return trajectories
+
+
 def trajectory_rows_to_samples(
     trajectories: list[dict[str, Any]],
     capacity: float,
@@ -138,24 +150,128 @@ def predict_actor_actions(
     raise ValueError(f"Unsupported algorithm_name: {algorithm_name}")
 
 
+def discounted_returns(
+    rewards: np.ndarray,
+    dones: np.ndarray,
+    gamma: float,
+) -> np.ndarray:
+    """Calculates discounted returns-to-go for a sequence of transitions."""
+    returns = np.zeros_like(rewards, dtype=np.float32)
+    running_return = 0.0
+    for index in range(len(rewards) - 1, -1, -1):
+        running_return = (
+            float(rewards[index])
+            + float(gamma) * (1.0 - float(dones[index])) * running_return
+        )
+        returns[index] = running_return
+    return returns
+
+
+def trajectory_rows_to_transitions(
+    trajectories: list[dict[str, Any]],
+    dataset: Any,
+    storage_params: Any,
+    env_kwargs: dict[str, Any],
+    gamma: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Rolls expert actions through environments and returns training targets.
+
+    The environment, rather than a duplicate reward implementation, defines the
+    reward and executed action. This keeps critic targets identical to the ones
+    used during subsequent RL training.
+    """
+    environments: dict[str, GasStorageEnv] = {}
+    observations = []
+    requested_actions = []
+    executed_actions = []
+    returns = []
+
+    for trajectory in trajectories:
+        split = str(trajectory.get("split", "pretrain"))
+        if split not in dataset.paths_by_split:
+            raise ValueError(f"Unknown trajectory split: {split}")
+        env = environments.setdefault(
+            split,
+            GasStorageEnv(dataset, split, storage_params, **env_kwargs),
+        )
+        reset_options = {
+            "path_id": int(trajectory["path_id"]),
+            "initial_inventory": float(
+                trajectory.get("initial_inventory", storage_params.initial_inventory)
+            ),
+        }
+        observation, _ = env.reset(options=reset_options)
+        path_observations = []
+        path_requested_actions = []
+        path_executed_actions = []
+        path_rewards = []
+        path_dones = []
+
+        for expert_action in trajectory["actions"]:
+            requested_action = np.asarray([expert_action], dtype=np.float32)
+            next_observation, reward, terminated, truncated, info = env.step(
+                requested_action
+            )
+            path_observations.append(observation)
+            path_requested_actions.append(requested_action)
+            path_executed_actions.append(
+                np.asarray([info["executed_action"]], dtype=np.float32)
+            )
+            path_rewards.append(float(reward))
+            path_dones.append(float(terminated or truncated))
+            observation = next_observation
+            if terminated or truncated:
+                break
+
+        path_rewards_array = np.asarray(path_rewards, dtype=np.float32)
+        path_dones_array = np.asarray(path_dones, dtype=np.float32)
+        observations.extend(path_observations)
+        requested_actions.extend(path_requested_actions)
+        executed_actions.extend(path_executed_actions)
+        returns.extend(discounted_returns(path_rewards_array, path_dones_array, gamma))
+
+    if not observations:
+        raise ValueError("No trajectory transitions found")
+    return (
+        np.asarray(observations, dtype=np.float32),
+        np.asarray(requested_actions, dtype=np.float32),
+        np.asarray(executed_actions, dtype=np.float32),
+        np.asarray(returns, dtype=np.float32),
+    )
+
+
 def train_behavior_cloning(
     model: Any,
     algorithm_name: str,
     observations: np.ndarray,
-    actions: np.ndarray,
+    requested_actions: np.ndarray,
+    executed_actions: np.ndarray,
+    returns: np.ndarray,
     *,
     epochs: int,
     batch_size: int,
     learning_rate: float,
     seed: int,
+    value_loss_coefficient: float = 0.5,
     progress: CliProgress | None = None,
 ) -> list[dict[str, float | int]]:
-    """Trains the model actor to imitate perfect-foresight actions."""
+    """Pretrains actor and critic networks from expert transitions."""
     torch.manual_seed(seed)
     device = model.device
     obs_tensor = torch.as_tensor(observations, dtype=torch.float32, device=device)
-    action_tensor = torch.as_tensor(actions, dtype=torch.float32, device=device)
-    dataset = TensorDataset(obs_tensor, action_tensor)
+    requested_action_tensor = torch.as_tensor(
+        requested_actions, dtype=torch.float32, device=device
+    )
+    executed_action_tensor = torch.as_tensor(
+        executed_actions, dtype=torch.float32, device=device
+    )
+    return_tensor = torch.as_tensor(returns, dtype=torch.float32, device=device)
+    dataset = TensorDataset(
+        obs_tensor,
+        requested_action_tensor,
+        executed_action_tensor,
+        return_tensor,
+    )
     generator = torch.Generator(device="cpu")
     generator.manual_seed(seed)
     loader = DataLoader(
@@ -164,26 +280,65 @@ def train_behavior_cloning(
         shuffle=True,
         generator=generator,
     )
-    optimizer = torch.optim.Adam(model.policy.parameters(), lr=learning_rate)
+    ppo_optimizer = torch.optim.Adam(model.policy.parameters(), lr=learning_rate)
+    actor_optimizer = None
+    critic_optimizer = None
+    if algorithm_name in {"sac", "td3"}:
+        actor_optimizer = torch.optim.Adam(model.actor.parameters(), lr=learning_rate)
+        critic_optimizer = torch.optim.Adam(model.critic.parameters(), lr=learning_rate)
     history = []
     for epoch in range(1, epochs + 1):
-        losses = []
-        for batch_obs, batch_actions in loader:
-            predicted = predict_actor_actions(model, batch_obs, algorithm_name)
-            loss = torch.nn.functional.mse_loss(predicted, batch_actions)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            losses.append(float(loss.detach().cpu()))
+        actor_losses = []
+        critic_losses = []
+        total_losses = []
+        for batch_obs, batch_requested_actions, batch_executed_actions, batch_returns in loader:
+            predicted_actions = predict_actor_actions(model, batch_obs, algorithm_name)
+            actor_loss = torch.nn.functional.mse_loss(
+                predicted_actions, batch_requested_actions
+            )
+            if algorithm_name == "ppo":
+                predicted_values = model.policy.predict_values(batch_obs).flatten()
+                critic_loss = torch.nn.functional.mse_loss(
+                    predicted_values, batch_returns
+                )
+                total_loss = actor_loss + value_loss_coefficient * critic_loss
+                ppo_optimizer.zero_grad()
+                total_loss.backward()
+                ppo_optimizer.step()
+            else:
+                q1_values, q2_values = model.critic(
+                    batch_obs, batch_executed_actions
+                )
+                critic_loss = torch.nn.functional.mse_loss(
+                    q1_values.flatten(), batch_returns
+                ) + torch.nn.functional.mse_loss(q2_values.flatten(), batch_returns)
+                assert actor_optimizer is not None
+                assert critic_optimizer is not None
+                actor_optimizer.zero_grad()
+                actor_loss.backward()
+                actor_optimizer.step()
+                critic_optimizer.zero_grad()
+                critic_loss.backward()
+                critic_optimizer.step()
+                total_loss = actor_loss + critic_loss
+            actor_losses.append(float(actor_loss.detach().cpu()))
+            critic_losses.append(float(critic_loss.detach().cpu()))
+            total_losses.append(float(total_loss.detach().cpu()))
         history.append(
             {
                 "epoch": epoch,
-                "loss": float(np.mean(losses)),
+                "loss": float(np.mean(total_losses)),
+                "actor_loss": float(np.mean(actor_losses)),
+                "critic_loss": float(np.mean(critic_losses)),
                 "n_samples": int(len(dataset)),
             }
         )
         if progress is not None:
             progress.update(epoch, f"loss={history[-1]['loss']:.6f}")
+    if algorithm_name in {"sac", "td3"}:
+        model.critic_target.load_state_dict(model.critic.state_dict())
+        if algorithm_name == "td3":
+            model.actor_target.load_state_dict(model.actor.state_dict())
     return history
 
 
@@ -217,22 +372,36 @@ def run_pretraining(
         config["agent_config"].get(algorithm_name, {}),
         seed=config["seeds"]["agent_seed"],
     )
-    progress.step(3, "loading trajectory samples")
-    observations, actions = load_trajectory_samples(
-        trajectory_path,
-        capacity=storage_params.capacity,
-        price_scale=float(env_kwargs["price_scale"]),
+    progress.step(3, "loading expert transitions")
+    trajectories = load_trajectory_rows(trajectory_path)
+    gamma = float(getattr(model, "gamma", 0.99))
+    (
+        observations,
+        requested_actions,
+        executed_actions,
+        returns,
+    ) = trajectory_rows_to_transitions(
+        trajectories,
+        dataset,
+        storage_params,
+        env_kwargs,
+        gamma,
     )
     progress.step(4, f"training {epochs} epochs on {len(observations)} samples")
     history = train_behavior_cloning(
         model,
         algorithm_name,
         observations,
-        actions,
+        requested_actions,
+        executed_actions,
+        returns,
         epochs=epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
         seed=int(config["seeds"]["agent_seed"]),
+        value_loss_coefficient=float(
+            config.get("pretraining_config", {}).get("value_loss_coefficient", 0.5)
+        ),
         progress=CliProgress("behavior_cloning_epochs", total=epochs, enabled=show_progress),
     )
 
@@ -255,6 +424,10 @@ def run_pretraining(
         "algorithm_name": algorithm_name,
         "trajectory_path": str(trajectory_path),
         "n_samples": int(len(observations)),
+        "gamma": gamma,
+        "value_loss_coefficient": float(
+            config.get("pretraining_config", {}).get("value_loss_coefficient", 0.5)
+        ),
         "epochs": int(epochs),
         "batch_size": int(batch_size),
         "learning_rate": float(learning_rate),

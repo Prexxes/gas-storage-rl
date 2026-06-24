@@ -361,6 +361,13 @@ PYTHONPATH=src python -m gas_storage_rl.pretraining.behavior_cloning \
 The pretraining run writes `pretrained_model.zip`, `policy_state_dict.pt`,
 `metadata.json`, and `training_history.json` under
 `runs/pretraining/<timestamp>-<config_name>-<algorithm>-<config_hash>/`.
+During pretraining, each oracle action sequence is replayed through the storage
+environment. The actor is fitted to the requested oracle action, while critic targets
+are discounted returns from the environment's scaled rewards. PPO fits its value
+function; SAC and TD3 fit both Q-functions against the same return target and then
+synchronize their target networks. Set
+`pretraining_config.value_loss_coefficient` to control the PPO value-loss weight
+(default: `0.5`).
 
 ## Plotting
 
