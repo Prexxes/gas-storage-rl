@@ -16,6 +16,13 @@ from matplotlib.lines import Line2D
 
 MEAN_COLOR = "tab:red"
 MEDIAN_COLOR = "tab:blue"
+METHOD_ORDER = [
+    "random",
+    "rule_based",
+    "lsmc",
+    "oracle_cloned_policy",
+    "perfect_foresight",
+]
 
 
 def main() -> None:
@@ -120,7 +127,7 @@ def _violin_plot(
     ylabel: str,
 ) -> plt.Figure:
     """Creates a Matplotlib violin plot grouped by method."""
-    methods = list(dict.fromkeys(metrics["method"].astype(str)))
+    methods = _ordered_methods(metrics["method"].astype(str))
     values = [
         metrics.loc[metrics["method"] == method, value_column].dropna().to_numpy()
         for method in methods
@@ -142,6 +149,14 @@ def _violin_plot(
         loc="best",
     )
     return figure
+
+
+def _ordered_methods(methods: pd.Series) -> list[str]:
+    """Returns benchmark methods first, followed by remaining methods."""
+    present = list(dict.fromkeys(methods))
+    ordered = [method for method in METHOD_ORDER if method in present]
+    ordered.extend(method for method in present if method not in METHOD_ORDER)
+    return ordered
 
 
 def _load_learning_curves(
