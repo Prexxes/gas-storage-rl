@@ -48,6 +48,7 @@ def test_experiment_group_records_runs_and_continues_after_failure(
 
     assert called_indices == [0, 1, 2]
     assert summary["completed_runs"] == 2
+    assert summary["skipped_runs"] == 0
     assert summary["failed_runs"] == 1
     rows = list(
         csv.DictReader(
@@ -62,3 +63,54 @@ def test_experiment_group_records_runs_and_continues_after_failure(
     assert {row["eval_seed"] for row in rows} == {"50"}
     assert len({row["env_seed"] for row in rows}) == 3
     assert len({row["agent_seed"] for row in rows}) == 3
+
+
+def test_experiment_group_records_skipped_runs(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Skipped seed runs are reported separately from completed runs."""
+    config = {
+        "logging_config": {"run_dir": str(tmp_path / "runs")},
+        "training_config": {"n_seeds": 2},
+        "seeds": {
+            "master_seed": 10,
+            "dataset_seed": 20,
+            "env_seed": 30,
+            "agent_seed": 40,
+            "eval_seed": 50,
+        },
+    }
+
+    def fake_run_experiment(config, algorithm, **kwargs):
+        del config, algorithm
+        seed_index = kwargs["seed_index"]
+        return {
+            "status": "skipped" if seed_index == 0 else "completed",
+            "run_dir": str(tmp_path / f"run-{seed_index}"),
+        }
+
+    monkeypatch.setattr(
+        run_experiment_group,
+        "run_experiment",
+        fake_run_experiment,
+    )
+
+    summary = run_experiment_group.run_experiment_group(
+        config,
+        "debug",
+        "ppo",
+    )
+
+    assert summary["completed_runs"] == 1
+    assert summary["skipped_runs"] == 1
+    assert summary["failed_runs"] == 0
+    rows = list(
+        csv.DictReader(
+            (Path(summary["group_dir"]) / "runs.csv").open(
+                newline="",
+                encoding="utf-8",
+            )
+        )
+    )
+    assert [row["status"] for row in rows] == ["skipped", "completed"]

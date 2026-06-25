@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -23,11 +25,63 @@ from gas_storage_rl.training.config import (
 )
 
 
-def load_pretrained_policy_state(model: Any, pretrained_policy: str | Path) -> Path:
-    """Loads pretrained SB3 policy weights into a freshly created model."""
+def _json_default(value: Any) -> str:
+    """JSON fallback serializer for run fingerprints."""
+    return str(value)
+
+
+def run_config_fingerprint(config: dict[str, Any]) -> str:
+    """Returns a stable fingerprint for a rerun-relevant run configuration."""
+    normalized = copy.deepcopy(config)
+    normalized.pop("experiment_group_id", None)
+    normalized.pop("logging_config", None)
+    serialized = json.dumps(
+        normalized,
+        sort_keys=True,
+        default=_json_default,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def find_completed_run(
+    base_dir: str | Path,
+    effective_config: dict[str, Any],
+) -> Path | None:
+    """Finds a completed run with the same rerun-relevant configuration."""
+    run_base_dir = Path(base_dir)
+    if not run_base_dir.exists():
+        return None
+
+    target_fingerprint = run_config_fingerprint(effective_config)
+    for run_dir in sorted(run_base_dir.iterdir(), reverse=True):
+        if not run_dir.is_dir():
+            continue
+        config_path = run_dir / "config.json"
+        final_summary_path = run_dir / "final_summary.json"
+        if not config_path.exists() or not final_summary_path.exists():
+            continue
+        try:
+            with config_path.open("r", encoding="utf-8") as file:
+                candidate_config = json.load(file)
+        except json.JSONDecodeError:
+            continue
+        if run_config_fingerprint(candidate_config) == target_fingerprint:
+            return run_dir
+    return None
+
+
+def pretrained_policy_reference(pretrained_policy: str | Path) -> str:
+    """Returns the effective policy file reference used by a training run."""
     policy_path = Path(pretrained_policy)
     if policy_path.is_dir():
         policy_path = policy_path / "policy_state_dict.pt"
+    return str(policy_path)
+
+
+def load_pretrained_policy_state(model: Any, pretrained_policy: str | Path) -> Path:
+    """Loads pretrained SB3 policy weights into a freshly created model."""
+    policy_path = Path(pretrained_policy_reference(pretrained_policy))
     if not policy_path.exists():
         raise FileNotFoundError(f"Pretrained policy not found: {policy_path}")
     state_dict = torch.load(policy_path, map_location=model.device)
@@ -42,15 +96,38 @@ def run_experiment(
     seed_index: int | None = None,
     experiment_group_id: str | None = None,
     pretrained_policy: str | Path | None = None,
+    rerun: bool = False,
 ) -> dict[str, Any]:
     """Runs one configured RL experiment and returns its summary."""
     config["agent_config"]["algorithm_name"] = algorithm
+    effective_config = build_effective_run_config(config, algorithm, seed_index)
+    if pretrained_policy is not None:
+        effective_config["pretrained_policy"] = pretrained_policy_reference(
+            pretrained_policy
+        )
+    if not rerun:
+        completed_run = find_completed_run(
+            config["logging_config"]["run_dir"],
+            effective_config,
+        )
+        if completed_run is not None:
+            with (completed_run / "final_summary.json").open(
+                "r",
+                encoding="utf-8",
+            ) as file:
+                summary = json.load(file)
+            return {
+                **summary,
+                "run_dir": str(completed_run),
+                "status": "skipped",
+                "existing_run_dir": str(completed_run),
+            }
+
     progress = CliProgress("run_experiment", total=4)
     progress.step(1, "building environment")
     dataset, storage_params, env_kwargs = build_environment(config)
     train_env = GasStorageEnv(dataset, "train", storage_params, **env_kwargs)
     eval_env = GasStorageEnv(dataset, "validation", storage_params, **env_kwargs)
-    effective_config = build_effective_run_config(config, algorithm, seed_index)
     if experiment_group_id is not None:
         effective_config["experiment_group_id"] = experiment_group_id
     logger = ExperimentLogger(config["logging_config"]["run_dir"], effective_config)
@@ -104,6 +181,7 @@ def run_experiment(
     if callback.last_validation_step != total_timesteps:
         logger.append_csv("evaluations.csv", validation_metrics)
     summary = {
+        "status": "completed",
         "algorithm_name": algorithm,
         "seed_index": seed_index,
         "experiment_group_id": experiment_group_id,
@@ -138,12 +216,18 @@ def main() -> None:
             "The RL model is still created from the current config."
         ),
     )
+    parser.add_argument(
+        "--rerun",
+        action="store_true",
+        help="Run even if a completed run with the same effective config exists.",
+    )
     args = parser.parse_args()
 
     summary = run_experiment(
         load_config(args.config),
         args.algorithm,
         pretrained_policy=args.pretrained_policy,
+        rerun=args.rerun,
     )
     print(json.dumps(summary, indent=2))
 

@@ -140,6 +140,18 @@ Train one RL agent:
 PYTHONPATH=src python -m gas_storage_rl.training.run_experiment --config configs/debug.yaml --algorithm ppo
 ```
 
+By default, training is skipped when `runs/` already contains a completed run
+with the same effective environment, dataset, price-process, training,
+evaluation, agent hyperparameter, seed, and pretraining-policy configuration.
+Pass `--rerun` to force a new run:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment \
+  --config configs/debug.yaml \
+  --algorithm ppo \
+  --rerun
+```
+
 Run a sequential group with `training_config.n_seeds` independent training seeds:
 
 ```bash
@@ -175,7 +187,9 @@ runs/experiment_groups/<group_id>/
 ```
 
 Each seed still produces a complete normal RL run under `runs/<run_id>/`. If one seed
-fails, the failure is recorded in `runs.csv` and the remaining seeds continue.
+matches an already completed run and `--rerun` is not set, it is recorded as
+`skipped` in `runs.csv`. If one seed fails, the failure is recorded in `runs.csv`
+and the remaining seeds continue.
 
 Each RL run writes:
 

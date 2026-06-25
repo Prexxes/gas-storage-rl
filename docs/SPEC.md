@@ -206,6 +206,8 @@ The implementation uses trapezoidal integration over evaluation checkpoints.
 
 A master seed should derive dataset, environment, agent, evaluation, and plotting seeds. Dataset splits use disjoint deterministic seeds. For a given environment and capacity, all algorithms train on the same train paths and are evaluated on the same validation and test paths.
 
+Training commands skip duplicate completed runs by default. Duplicate detection compares the effective run configuration that affects training and validation, including environment settings, dataset settings, price-process parameters, training settings, algorithm hyperparameters, seeds, and pretraining policy. Organizational metadata such as `experiment_group_id` and log directory paths does not affect duplicate detection. Passing `--rerun` forces a new timestamped run.
+
 ## Price Dataset Cache
 
 Price paths are persisted under `data/cache/{dataset_hash}/` when `dataset_config.use_cache` is enabled. The dataset hash is computed from the price-relevant configuration: environment name, episode length, split sizes, dataset seed, and price-process parameters. Each cache directory contains:

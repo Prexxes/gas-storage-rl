@@ -22,6 +22,7 @@ def run_experiment_group(
     *,
     n_seeds: int | None = None,
     pretrained_policy: str | Path | None = None,
+    rerun: bool = False,
 ) -> dict[str, Any]:
     """Runs one experiment per seed index and records a group manifest."""
     run_count = int(
@@ -61,8 +62,9 @@ def run_experiment_group(
                 seed_index=seed_index,
                 experiment_group_id=group_id,
                 pretrained_policy=pretrained_policy,
+                rerun=rerun,
             )
-            row["status"] = "completed"
+            row["status"] = summary.get("status", "completed")
             row["run_dir"] = summary["run_dir"]
         except Exception as error:  # Continue so remaining seeds still run.
             row["status"] = "failed"
@@ -70,6 +72,7 @@ def run_experiment_group(
         _write_csv(group_dir / "runs.csv", rows)
 
     completed = sum(row["status"] == "completed" for row in rows)
+    skipped = sum(row["status"] == "skipped" for row in rows)
     failed = sum(row["status"] == "failed" for row in rows)
     metadata = {
         "experiment_group_id": group_id,
@@ -77,6 +80,7 @@ def run_experiment_group(
         "algorithm_name": algorithm,
         "n_seeds": run_count,
         "completed_runs": completed,
+        "skipped_runs": skipped,
         "failed_runs": failed,
         "dataset_seed": int(config["seeds"]["dataset_seed"]),
         "eval_seed": int(config["seeds"]["eval_seed"]),
@@ -130,6 +134,11 @@ def main() -> None:
     parser.add_argument("--algorithm", required=True, choices=["ppo", "sac", "td3"])
     parser.add_argument("--n-seeds", type=int)
     parser.add_argument("--pretrained-policy")
+    parser.add_argument(
+        "--rerun",
+        action="store_true",
+        help="Run seeds even if completed runs with the same effective configs exist.",
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -139,6 +148,7 @@ def main() -> None:
         args.algorithm,
         n_seeds=args.n_seeds,
         pretrained_policy=args.pretrained_policy,
+        rerun=args.rerun,
     )
     print(json.dumps(summary, indent=2))
     if summary["failed_runs"]:
