@@ -190,7 +190,7 @@ Validation and test metrics include mean, median, standard deviation, minimum, m
 
 Training logs contain one row per completed training episode in `metrics.csv`. Stable-Baselines3 diagnostics are written to `sb3_logs/progress.csv` and available diagnostics such as PPO KL divergence, clip fraction, entropy loss, policy-gradient loss, value loss, SAC/TD3 actor loss, critic loss, entropy coefficient, and learning rate are copied into training rows when SB3 exposes them during callbacks.
 
-Periodic validation runs after `total_training_env_steps` reaches each configured `eval_freq` interval. The best validation model is saved separately from the final model. Test and historical backtest evaluation are not part of the training command. They are run manually after model and hyperparameter selection with `gas_storage_rl.evaluation.run_holdout_evaluation`, so holdout results do not influence training-time decisions.
+Periodic validation runs after `total_training_env_steps` reaches each configured `eval_freq` interval. The best validation model is saved separately from the final model. A risk-adjusted validation model is also saved by maximizing `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`, where `risk_adjusted_std_penalty` defaults to `0.5`. Test and historical backtest evaluation are not part of the training command. They are run manually after model and hyperparameter selection with `gas_storage_rl.evaluation.run_holdout_evaluation`, so holdout results do not influence training-time decisions.
 
 ## AULC
 

@@ -3,6 +3,7 @@
 import numpy as np
 
 from gas_storage_rl.evaluation.metrics import (
+    add_risk_adjusted_return,
     aulc,
     interquartile_mean,
     summarize_episode_infos,
@@ -34,6 +35,16 @@ def test_evaluation_uses_total_training_env_steps() -> None:
     )
     assert metrics["total_training_env_steps"] == 50_000
     assert "total_env_steps" not in metrics
+
+
+def test_add_risk_adjusted_return_uses_mean_minus_std_penalty() -> None:
+    """Risk-adjusted validation return penalizes path-wise volatility."""
+    metrics = {"mean_return_raw": 12.0, "std_return_raw": 4.0}
+
+    add_risk_adjusted_return(metrics, std_penalty=0.5)
+
+    assert metrics["risk_adjusted_return_raw"] == 10.0
+    assert metrics["risk_adjusted_std_penalty"] == 0.5
 
 
 def test_episode_summary_uses_economic_reward_for_evaluation() -> None:

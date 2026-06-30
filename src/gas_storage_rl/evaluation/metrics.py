@@ -23,6 +23,18 @@ def aulc(steps: np.ndarray, returns: np.ndarray) -> float:
     return float(np.trapezoid(returns[order], steps[order]))
 
 
+def add_risk_adjusted_return(
+    metrics: dict,
+    std_penalty: float,
+) -> dict:
+    """Adds a mean-minus-volatility validation score to metrics."""
+    mean_return = float(metrics["mean_return_raw"])
+    std_return = float(metrics["std_return_raw"])
+    metrics["risk_adjusted_return_raw"] = mean_return - float(std_penalty) * std_return
+    metrics["risk_adjusted_std_penalty"] = float(std_penalty)
+    return metrics
+
+
 def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
     """Summarizes per-step info dictionaries for one episode."""
     economic_rewards = np.array(

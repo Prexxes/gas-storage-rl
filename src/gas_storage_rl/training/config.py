@@ -52,6 +52,12 @@ def build_effective_run_config(
             "deterministic": bool(
                 config.get("evaluation_config", {}).get("deterministic", True)
             ),
+            "risk_adjusted_std_penalty": float(
+                config.get("evaluation_config", {}).get(
+                    "risk_adjusted_std_penalty",
+                    0.5,
+                )
+            ),
             "evaluation_split": "validation",
         },
         "seeds": _effective_seeds(config["seeds"]),

@@ -9,7 +9,10 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
-from gas_storage_rl.evaluation.metrics import summarize_episode_infos
+from gas_storage_rl.evaluation.metrics import (
+    add_risk_adjusted_return,
+    summarize_episode_infos,
+)
 from gas_storage_rl.logging.experiment_logger import ExperimentLogger
 from gas_storage_rl.logging.progress import CliProgress
 
@@ -24,6 +27,7 @@ class TrainingLoggingCallback(BaseCallback):
         eval_freq: int,
         algorithm_name: str,
         deterministic: bool = True,
+        risk_adjusted_std_penalty: float = 0.5,
         validation_path_ids: list[int] | None = None,
         total_timesteps: int | None = None,
         progress: CliProgress | None = None,
@@ -35,10 +39,12 @@ class TrainingLoggingCallback(BaseCallback):
         self.eval_freq = eval_freq
         self.algorithm_name = algorithm_name
         self.deterministic = deterministic
+        self.risk_adjusted_std_penalty = float(risk_adjusted_std_penalty)
         self.validation_path_ids = validation_path_ids
         self.total_timesteps = total_timesteps
         self.progress = progress
         self.best_validation_return = float("-inf")
+        self.best_risk_adjusted_validation_return = float("-inf")
         self.last_validation_step: int | None = None
         self.episode_infos: list[list[dict[str, Any]]] = [[]]
         self.episode_count = 0
@@ -111,13 +117,24 @@ class TrainingLoggingCallback(BaseCallback):
             total_training_env_steps=self.num_timesteps,
         )
         metrics["algorithm_name"] = self.algorithm_name
+        mean_return = float(metrics["mean_return_raw"])
+        add_risk_adjusted_return(metrics, self.risk_adjusted_std_penalty)
         self.experiment_logger.append_csv("evaluations.csv", metrics)
         self.last_validation_step = self.num_timesteps
-        mean_return = float(metrics["mean_return_raw"])
         if mean_return > self.best_validation_return:
             self.best_validation_return = mean_return
-            best_model_path = Path(self.experiment_logger.run_dir) / "best_validation_model"
+            best_model_path = (
+                Path(self.experiment_logger.run_dir) / "best_validation_model"
+            )
             self.model.save(best_model_path)
+        risk_adjusted_return = float(metrics["risk_adjusted_return_raw"])
+        if risk_adjusted_return > self.best_risk_adjusted_validation_return:
+            self.best_risk_adjusted_validation_return = risk_adjusted_return
+            risk_adjusted_model_path = (
+                Path(self.experiment_logger.run_dir)
+                / "best_risk_adjusted_validation_model"
+            )
+            self.model.save(risk_adjusted_model_path)
 
     def _sb3_diagnostics(self) -> dict[str, float]:
         """Extracts currently available SB3 logger diagnostics."""

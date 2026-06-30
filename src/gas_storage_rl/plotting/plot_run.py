@@ -47,8 +47,11 @@ def main() -> None:
     parser.add_argument(
         "--model",
         default="final",
-        choices=["final", "best"],
-        help="Use final_model.zip or best_validation_model.zip.",
+        choices=["final", "best", "risk_adjusted"],
+        help=(
+            "Use final_model.zip, best_validation_model.zip, or "
+            "best_risk_adjusted_validation_model.zip."
+        ),
     )
     parser.add_argument(
         "--stochastic",
@@ -186,6 +189,8 @@ def _model_path(run_dir: Path, model_name: str) -> Path:
     """Returns the model path for a model selector."""
     if model_name == "best":
         return run_dir / "best_validation_model.zip"
+    if model_name == "risk_adjusted":
+        return run_dir / "best_risk_adjusted_validation_model.zip"
     return run_dir / "final_model.zip"
 
 

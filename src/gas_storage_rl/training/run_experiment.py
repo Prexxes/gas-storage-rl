@@ -15,6 +15,7 @@ import torch
 from gas_storage_rl.agents.sb3_factory import make_sb3_agent
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
+from gas_storage_rl.evaluation.metrics import add_risk_adjusted_return
 from gas_storage_rl.logging.experiment_logger import ExperimentLogger
 from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.training.callbacks import TrainingLoggingCallback
@@ -161,6 +162,9 @@ def run_experiment(
         eval_freq=int(config["training_config"]["eval_freq"]),
         algorithm_name=algorithm,
         deterministic=bool(config["evaluation_config"].get("deterministic", True)),
+        risk_adjusted_std_penalty=float(
+            config.get("evaluation_config", {}).get("risk_adjusted_std_penalty", 0.5)
+        ),
         total_timesteps=total_timesteps,
         progress=CliProgress("training", total=total_timesteps),
     )
@@ -178,6 +182,10 @@ def run_experiment(
     )
     eval_wall_time = time.time() - eval_started
     validation_metrics["algorithm_name"] = algorithm
+    add_risk_adjusted_return(
+        validation_metrics,
+        float(config.get("evaluation_config", {}).get("risk_adjusted_std_penalty", 0.5)),
+    )
     if callback.last_validation_step != total_timesteps:
         logger.append_csv("evaluations.csv", validation_metrics)
     summary = {

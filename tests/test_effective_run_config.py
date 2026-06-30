@@ -67,6 +67,7 @@ def test_effective_run_config_keeps_only_used_training_fields() -> None:
     assert "plotting_config" not in effective
     assert effective["evaluation_config"] == {
         "deterministic": True,
+        "risk_adjusted_std_penalty": 0.5,
         "evaluation_split": "validation",
     }
     assert "lsmc_action_grid" not in effective["evaluation_config"]
