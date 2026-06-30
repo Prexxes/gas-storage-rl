@@ -177,6 +177,7 @@ class PerfectForesightBaseline:
                 {
                     "split": split,
                     "path_id": path_id,
+                    "start_index": date_range.get("start_index"),
                     "start_date": date_range.get("start_date"),
                     "end_date": date_range.get("end_date"),
                     "initial_inventory": float(initial),

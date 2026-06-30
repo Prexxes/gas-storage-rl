@@ -383,6 +383,21 @@ synchronize their target networks. Set
 `pretraining_config.value_loss_coefficient` to control the PPO value-loss weight
 (default: `0.5`).
 
+Analyze whether perfect-foresight actions are ambiguous by absolute simulation day:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.pretraining.analyze_oracle_trajectories \
+  --trajectories runs/benchmarks/<run_id>/perfect_foresight_trajectories_pretrain.jsonl \
+  --day 88
+```
+
+The diagnostics use `start_index + episode_day` as `absolute_day`, so day 0 is the
+first January 1 index of the generated raw price path. If `--output-dir` is omitted
+for a benchmark trajectory file, outputs are written to `runs/diagnostics/<run_id>/`.
+The command writes step-level samples, action counts and ambiguity metrics by day,
+feature statistics by day and action, a stacked action-distribution plot, and
+selected-day plots for repeated `--day` arguments.
+
 ## Plotting
 
 Plotting helpers live in `gas_storage_rl.plotting` and return Matplotlib figures for price paths, action paths, storage levels, cumulative cashflows, price-action scatter, learning curves, and return distributions.

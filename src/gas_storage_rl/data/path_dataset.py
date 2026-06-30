@@ -373,6 +373,7 @@ def _build_date_ranges(
         base_date = datetime.strptime(base_dates_by_split[split], "%Y-%m-%d").date()
         output[split] = [
             {
+                "start_index": int(start),
                 "start_date": str(base_date + timedelta(days=int(start))),
                 "end_date": str(
                     base_date + timedelta(days=int(start) + episode_length - 1)
