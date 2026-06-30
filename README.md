@@ -397,6 +397,10 @@ Create trajectory plots for one saved RL run:
 PYTHONPATH=src python -m gas_storage_rl.plotting.plot_run --run-dir runs/<run_id> --split validation --path-id 0
 ```
 
+By default, `plot_run` uses `best_validation_model.zip`. Pass `--model final`
+to inspect the final training checkpoint or `--model risk_adjusted` for the
+risk-adjusted validation checkpoint.
+
 ### RL Versus Benchmark Comparisons
 
 Create comparison plots across multiple RL runs and a benchmark run:

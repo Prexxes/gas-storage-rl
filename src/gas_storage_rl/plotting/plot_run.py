@@ -46,10 +46,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="final",
+        default="best",
         choices=["final", "best", "risk_adjusted"],
         help=(
-            "Use final_model.zip, best_validation_model.zip, or "
+            "Checkpoint to plot. Defaults to best_validation_model.zip; "
+            "use final for final_model.zip or risk_adjusted for "
             "best_risk_adjusted_validation_model.zip."
         ),
     )
