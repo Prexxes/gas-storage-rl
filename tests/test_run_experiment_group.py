@@ -123,3 +123,83 @@ def test_experiment_group_records_skipped_runs(
         "10.0",
         "11.0",
     ]
+
+
+def test_experiment_group_accepts_explicit_seed_indices(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Manual final runs can use disjoint seed indices such as 100..107."""
+    config = {
+        "logging_config": {"run_dir": str(tmp_path / "runs")},
+        "training_config": {"n_seeds": 2},
+        "seeds": {
+            "master_seed": 10,
+            "dataset_seed": 20,
+            "env_seed": 30,
+            "agent_seed": 40,
+            "eval_seed": 50,
+        },
+    }
+    called_indices = []
+
+    def fake_run_experiment(config, algorithm, **kwargs):
+        del config, algorithm
+        seed_index = kwargs["seed_index"]
+        called_indices.append(seed_index)
+        return {"status": "completed", "run_dir": str(tmp_path / f"run-{seed_index}")}
+
+    monkeypatch.setattr(
+        run_experiment_group,
+        "run_experiment",
+        fake_run_experiment,
+    )
+
+    summary = run_experiment_group.run_experiment_group(
+        config,
+        "debug",
+        "ppo",
+        seed_indices=[100, 101],
+    )
+
+    assert called_indices == [100, 101]
+    assert summary["n_seeds"] == 2
+    assert summary["seed_indices"] == [100, 101]
+    rows = list(
+        csv.DictReader(
+            (Path(summary["group_dir"]) / "runs.csv").open(
+                newline="",
+                encoding="utf-8",
+            )
+        )
+    )
+    assert [row["seed_index"] for row in rows] == ["100", "101"]
+
+
+def test_experiment_group_rejects_duplicate_explicit_seed_indices(
+    tmp_path: Path,
+) -> None:
+    """Explicit seed-index lists must be disjoint."""
+    config = {
+        "logging_config": {"run_dir": str(tmp_path / "runs")},
+        "training_config": {"n_seeds": 2},
+        "seeds": {
+            "master_seed": 10,
+            "dataset_seed": 20,
+            "env_seed": 30,
+            "agent_seed": 40,
+            "eval_seed": 50,
+        },
+    }
+
+    try:
+        run_experiment_group.run_experiment_group(
+            config,
+            "debug",
+            "ppo",
+            seed_indices=[100, 100],
+        )
+    except ValueError as error:
+        assert "seed_indices must be unique" in str(error)
+    else:
+        raise AssertionError("duplicate seed indices should fail")

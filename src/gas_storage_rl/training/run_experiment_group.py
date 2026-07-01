@@ -21,23 +21,34 @@ def run_experiment_group(
     algorithm: str,
     *,
     n_seeds: int | None = None,
+    seed_indices: list[int] | None = None,
     pretrained_policy: str | Path | None = None,
     rerun: bool = False,
 ) -> dict[str, Any]:
     """Runs one experiment per seed index and records a group manifest."""
-    run_count = int(
-        config["training_config"].get("n_seeds", 1)
-        if n_seeds is None
-        else n_seeds
-    )
-    if run_count <= 0:
-        raise ValueError("n_seeds must be positive")
+    if seed_indices is not None and n_seeds is not None:
+        raise ValueError("Pass either n_seeds or seed_indices, not both")
+    if seed_indices is None:
+        run_count = int(
+            config["training_config"].get("n_seeds", 1)
+            if n_seeds is None
+            else n_seeds
+        )
+        if run_count <= 0:
+            raise ValueError("n_seeds must be positive")
+        seed_indices = list(range(run_count))
+    else:
+        if not seed_indices:
+            raise ValueError("seed_indices must not be empty")
+        if len(seed_indices) != len(set(seed_indices)):
+            raise ValueError("seed_indices must be unique")
+    run_count = len(seed_indices)
 
     group_dir, group_id = _create_group_dir(config, config_name, algorithm)
     _write_json(group_dir / "group_config.json", config)
     started = time.time()
     rows = []
-    for seed_index in range(run_count):
+    for seed_index in seed_indices:
         run_config = copy.deepcopy(config)
         run_config["seeds"] = seeds_for_run(config["seeds"], seed_index)
         row = {
@@ -82,6 +93,7 @@ def run_experiment_group(
         "config_name": config_name,
         "algorithm_name": algorithm,
         "n_seeds": run_count,
+        "seed_indices": seed_indices,
         "completed_runs": completed,
         "skipped_runs": skipped,
         "failed_runs": failed,
@@ -147,6 +159,7 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--algorithm", required=True, choices=["ppo", "sac", "td3"])
     parser.add_argument("--n-seeds", type=int)
+    parser.add_argument("--seed-indices", type=int, nargs="+")
     parser.add_argument("--pretrained-policy")
     parser.add_argument(
         "--rerun",
@@ -161,6 +174,7 @@ def main() -> None:
         config_path.stem,
         args.algorithm,
         n_seeds=args.n_seeds,
+        seed_indices=args.seed_indices,
         pretrained_policy=args.pretrained_policy,
         rerun=args.rerun,
     )

@@ -174,6 +174,32 @@ Training logs contain one row per completed training episode in `metrics.csv`. S
 
 Periodic validation runs after `total_training_env_steps` reaches each configured `eval_freq` interval. After the final policy update, one additional validation row is appended to `evaluations.csv`, even when `total_timesteps` is exactly divisible by `eval_freq`. The best validation model is saved separately from the final model. A risk-adjusted validation model is also saved by maximizing `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`, where `risk_adjusted_std_penalty` defaults to `0.5`. Test and historical backtest evaluation are not part of the training command. They are run manually after model and hyperparameter selection with `gas_storage_rl.evaluation.run_holdout_evaluation`, so holdout results do not influence training-time decisions.
 
+## Hyperparameter Tuning
+
+Phase 1 hyperparameter tuning is implemented by `gas_storage_rl.hpo.run_hpo`.
+It uses Optuna TPE with local SQLite storage at
+`runs/hpo/<study_id>/optuna_study.db`. HPO optimizes only algorithm-specific
+Stable-Baselines3 hyperparameters for PPO, SAC, or TD3. Price-process settings,
+train/validation/test split sizes, reward definition, storage restrictions,
+capacity, terminal target, benchmark definitions, evaluation metrics, seed
+counts, and the fixed training budget are treated as experimental design and are
+not tuned.
+
+Each HPO trial trains the suggested hyperparameter configuration on the train
+split for seed indices `0`, `1`, and `2`. The `dataset_seed` remains constant;
+`env_seed` and `agent_seed` are deterministically derived from `master_seed` and
+the seed index. The trial objective is the mean final
+`mean_validation_return_raw` across the three seed runs after exactly the fixed
+training budget, for example `500_000` timesteps. A trial is valid only if all
+three seed runs complete successfully. Trial exports additionally store
+across-seed standard deviation, median, and minimum validation return.
+
+HPO never evaluates the test split. Phase 2 final runs are started manually from
+the saved `best_config.json` with disjoint seed indices, for example `100..107`,
+using `gas_storage_rl.training.run_experiment_group --seed-indices`. Those final
+runs train on the train split, use validation for learning curves and AULC, and
+evaluate the test split only as the final holdout performance.
+
 ## AULC
 
 Sample efficiency is measured with area under the validation learning curve:

@@ -169,6 +169,53 @@ runs/experiment_groups/<group_id>/
   runs.csv
 ```
 
+## Hyperparameter Tuning
+
+Phase 1 hyperparameter tuning uses Optuna with the TPE sampler. Each trial trains
+one algorithm-specific hyperparameter configuration on the train split for seed
+indices `0`, `1`, and `2`, then selects hyperparameters by the mean final
+validation return after the fixed training budget. The test split is not used by
+the HPO runner.
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \
+  --config configs/ou_c30.yaml \
+  --algorithm ppo \
+  --n-trials 32 \
+  --seed-indices 0 1 2 \
+  --total-timesteps 500000
+```
+
+HPO output is stored under:
+
+```text
+runs/hpo/<study_id>/
+  optuna_study.db
+  study_config.json
+  search_space.json
+  metadata.json
+  trials.csv
+  trial_seed_runs.csv
+  best_trial.json
+  best_config.json
+```
+
+Trials are valid only when all three tuning-seed runs finish successfully. The
+Optuna objective is `mean_validation_return_raw` averaged across the tuning
+seeds; trial exports also store the across-seed standard deviation, median, and
+minimum validation return. Phase 2 final runs are started manually from
+`best_config.json` with disjoint seed indices:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
+  --config runs/hpo/<study_id>/best_config.json \
+  --algorithm ppo \
+  --seed-indices 100 101 102 103 104 105 106 107
+```
+
+Those final runs use the validation split for learning curves/AULC and the test
+split for final holdout performance.
+
 Each seed still produces a complete normal RL run under `runs/<run_id>/`. If one seed
 matches an already completed run and `--rerun` is not set, it is recorded as
 `skipped` in `runs.csv`. If one seed fails, the failure is recorded in `runs.csv`
