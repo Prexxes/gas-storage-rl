@@ -158,3 +158,99 @@ def test_run_experiment_rerun_bypasses_existing_completed_run(
 
     with pytest.raises(RuntimeError, match="training path reached"):
         run_experiment(config, "ppo", seed_index=0, rerun=True)
+
+
+def test_run_experiment_logs_final_validation_after_exact_eval_step(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Final validation is appended even if periodic validation hit the last step."""
+    config = _base_config(tmp_path)
+    fake_loggers = []
+
+    class FakeExperimentLogger:
+        """Collects run output in memory."""
+
+        def __init__(self, base_dir: str | Path, effective_config: dict) -> None:
+            self.run_dir = Path(base_dir) / "fake-run"
+            self.run_dir.mkdir(parents=True)
+            self.rows: list[tuple[str, dict]] = []
+            fake_loggers.append(self)
+
+        def metadata(self) -> dict:
+            """Returns minimal metadata."""
+            return {}
+
+        def write_json(self, name: str, payload: dict) -> None:
+            """Ignores JSON writes."""
+
+        def append_csv(self, name: str, row: dict) -> None:
+            """Collects CSV writes."""
+            self.rows.append((name, dict(row)))
+
+        def finalize_metadata(self, metadata: dict) -> dict:
+            """Returns metadata unchanged."""
+            return metadata
+
+    class FakeCallback:
+        """Pretends periodic validation already ran at the final step."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            self.last_validation_step = kwargs["total_timesteps"]
+
+    class FakeModel:
+        """Minimal SB3 model double."""
+
+        def set_logger(self, logger) -> None:
+            """Ignores SB3 logger configuration."""
+
+        def learn(self, total_timesteps: int, callback) -> None:
+            """Skips training."""
+
+        def save(self, path: str | Path) -> None:
+            """Ignores model persistence."""
+
+    def fake_evaluate_policy_on_paths(*args, **kwargs):
+        return (
+            {
+                "mean_return_raw": 10.0,
+                "std_return_raw": 2.0,
+                "split": "validation",
+                "total_training_env_steps": kwargs["total_training_env_steps"],
+            },
+            [],
+        )
+
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.build_environment",
+        lambda config: (object(), object(), {}),
+    )
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.GasStorageEnv",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.ExperimentLogger",
+        FakeExperimentLogger,
+    )
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.make_sb3_agent",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.TrainingLoggingCallback",
+        FakeCallback,
+    )
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.evaluate_policy_on_paths",
+        fake_evaluate_policy_on_paths,
+    )
+
+    summary = run_experiment(config, "ppo", rerun=True)
+
+    evaluation_rows = [
+        row for name, row in fake_loggers[0].rows if name == "evaluations.csv"
+    ]
+    assert summary["validation"]["total_training_env_steps"] == 16
+    assert len(evaluation_rows) == 1
+    assert evaluation_rows[0]["total_training_env_steps"] == 16

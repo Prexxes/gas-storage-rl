@@ -186,8 +186,7 @@ def run_experiment(
         validation_metrics,
         float(config.get("evaluation_config", {}).get("risk_adjusted_std_penalty", 0.5)),
     )
-    if callback.last_validation_step != total_timesteps:
-        logger.append_csv("evaluations.csv", validation_metrics)
+    logger.append_csv("evaluations.csv", validation_metrics)
     summary = {
         "status": "completed",
         "algorithm_name": algorithm,

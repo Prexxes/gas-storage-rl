@@ -197,6 +197,7 @@ Each RL run writes:
 - `metadata.json`
 - `metrics.csv`: completed training episodes
 - `evaluations.csv`: periodic validation according to `training_config.eval_freq`
+  plus final post-training validation
 - `best_validation_model.zip`
 - `best_risk_adjusted_validation_model.zip`: highest validation
   `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`
