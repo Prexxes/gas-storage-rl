@@ -98,34 +98,16 @@ Raw economic cashflow is:
 cashflow_t = -a_t p_t
 ```
 
-Training uses a mark-to-market shaped reward. For non-terminal steps:
-
-```text
-mark_to_market_reward_t = v_(t+1) * (p_(t+1) - p_t)
-max_withdrawable_remaining = remaining_steps * withdrawal_rate
-excess_inventory = max(
-    0,
-    v_(t+1) - target_inventory - max_withdrawable_remaining,
-)
-feasibility_penalty = -lambda_feasibility * excess_inventory
-shaped_reward_t = mark_to_market_reward_t + feasibility_penalty
-```
-
-The terminal-reachability action clip normally prevents positive
-`excess_inventory` and `inventory_shortfall`; the feasibility penalty remains as a
-diagnostic and fallback for already unreachable states.
-
-At the final decision step:
+At the final decision step, a terminal inventory penalty is applied:
 
 ```text
 lambda_terminal = penalty_factor * mean_training_price
 terminal_penalty = -lambda_terminal * abs(v_T - target_inventory)
-shaped_reward_T = cashflow_T + terminal_penalty - v_T p_T
+reward_t = cashflow_t + terminal_penalty_t
 ```
 
-The scaled reward returned to the RL algorithm is
-`shaped_reward / reward_scale`. Economic evaluation uses cashflow plus terminal
-penalty, not the shaped training reward.
+For non-terminal steps, `terminal_penalty_t` is zero. The scaled reward returned to
+the RL algorithm is `reward_t / reward_scale`.
 
 ## Observation Normalization
 

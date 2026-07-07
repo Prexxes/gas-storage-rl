@@ -225,17 +225,17 @@ def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
         infos = trajectory["infos"]
         x_values = np.array([info["current_step"] for info in infos])
         storage = np.array([info["storage_level"] for info in infos])
-        economic_rewards = np.array(
+        rewards = np.array(
             [
                 info.get(
-                    "economic_reward_raw",
+                    "raw_reward",
                     info["raw_cashflow"] + info.get("terminal_penalty", 0.0),
                 )
                 for info in infos
             ],
             dtype=np.float64,
         )
-        cumulative_return = np.cumsum(economic_rewards)
+        cumulative_return = np.cumsum(rewards)
         axes[2].plot(x_values, storage, label=label)
         axes[3].plot(x_values, cumulative_return, label=label)
 
@@ -282,7 +282,6 @@ def _perfect_foresight_trajectory(
         terminal_penalty = 0.0
         if step == len(path) - 1:
             terminal_penalty = -lambda_terminal * abs(storage_level - initial)
-        economic_reward_raw = raw_cashflow + terminal_penalty
         infos.append(
             {
                 "current_step": step,
@@ -292,7 +291,7 @@ def _perfect_foresight_trajectory(
                 "storage_level": storage_level,
                 "raw_cashflow": raw_cashflow,
                 "terminal_penalty": terminal_penalty,
-                "economic_reward_raw": economic_reward_raw,
+                "raw_reward": raw_cashflow + terminal_penalty,
                 "start_index": int(dataset.get_start_indices(split)[path_id]),
                 "initial_inventory": initial,
                 "target_terminal_inventory": initial,

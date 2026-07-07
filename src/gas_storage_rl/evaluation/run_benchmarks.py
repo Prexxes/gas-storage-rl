@@ -223,8 +223,6 @@ def perfect_foresight_episode_rows(
                 "seed": None,
                 "episode_return_raw": float(trajectory["objective_value"]),
                 "episode_return_scaled": None,
-                "episode_shaped_return_raw": None,
-                "episode_shaped_return_scaled": None,
                 "episode_length": float(len(trajectory["actions"])),
                 "final_storage_level": float(trajectory["storage_levels"][-1]),
                 "terminal_deviation": float(trajectory["terminal_deviation"]),

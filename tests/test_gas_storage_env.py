@@ -10,7 +10,6 @@ from gas_storage_rl.envs.storage_dynamics import StorageParams
 def make_env(
     prices: np.ndarray | None = None,
     storage_params: StorageParams | None = None,
-    feasibility_penalty_factor: float = 0.5,
 ) -> GasStorageEnv:
     """Creates a tiny deterministic environment."""
     price_paths = np.asarray(
@@ -28,7 +27,6 @@ def make_env(
         price_scale=10.0,
         reward_scale=10.0,
         penalty_factor=0.5,
-        feasibility_penalty_factor=feasibility_penalty_factor,
         fixed_path_id=0,
     )
 
@@ -50,17 +48,16 @@ def test_gymnasium_reset_step_api_shape_and_dtype() -> None:
     assert info["split"] == "train"
 
 
-def test_mark_to_market_reward_is_used_for_training() -> None:
-    """Training reward follows marked inventory value, not immediate cashflow."""
+def test_cashflow_reward_is_used_for_training() -> None:
+    """Training reward follows immediate cashflow."""
     env = make_env()
     env.reset()
     _, buy_reward, _, _, buy_info = env.step([1.0])
     _, sell_reward, _, _, sell_info = env.step([-1.0])
     assert buy_info["raw_cashflow"] < 0.0
     assert sell_info["raw_cashflow"] > 0.0
-    assert buy_info["mark_to_market_reward"] == 10.0
-    assert buy_info["economic_reward_raw"] == -10.0
-    assert buy_info["shaped_reward_raw"] == 10.0
+    assert buy_info["raw_reward"] == -10.0
+    assert sell_info["raw_reward"] == 20.0
     assert buy_reward == buy_info["scaled_reward"]
     assert sell_reward == sell_info["scaled_reward"]
 
@@ -76,9 +73,8 @@ def test_final_action_is_clipped_to_avoid_terminal_penalty() -> None:
     assert info["executed_action"] == -1.0
     assert info["terminal_feasibility_clipped"] is True
     assert info["terminal_penalty"] == 0.0
-    assert np.isclose(info["economic_reward_raw"], 30.0)
-    assert np.isclose(info["shaped_reward_raw"], 30.0)
-    assert np.isclose(reward, info["shaped_reward_raw"] / 10.0)
+    assert np.isclose(info["raw_reward"], 30.0)
+    assert np.isclose(reward, info["raw_reward"] / 10.0)
 
 
 def test_terminal_penalty_remains_when_target_is_physically_unreachable() -> None:
@@ -99,12 +95,11 @@ def test_terminal_penalty_remains_when_target_is_physically_unreachable() -> Non
     assert terminated
     assert info["executed_action"] == 0.0
     assert info["terminal_penalty"] < 0.0
-    assert np.isclose(info["economic_reward_raw"], info["terminal_penalty"])
-    assert np.isclose(info["shaped_reward_raw"], info["terminal_penalty"] - 10.0)
-    assert np.isclose(reward, info["shaped_reward_raw"] / 10.0)
+    assert np.isclose(info["raw_reward"], info["terminal_penalty"])
+    assert np.isclose(reward, info["raw_reward"] / 10.0)
 
 
-def test_feasibility_penalty_for_inventory_that_cannot_be_withdrawn() -> None:
+def test_terminal_feasibility_prevents_unwithdrawable_purchase() -> None:
     """Terminal-feasibility clipping prevents excess inventory from a purchase."""
     env = make_env(
         prices=np.array([[10.0, 10.0]], dtype=np.float32),
@@ -113,21 +108,17 @@ def test_feasibility_penalty_for_inventory_that_cannot_be_withdrawn() -> None:
             withdrawal_rate=0.0,
             initial_inventory=4.0,
         ),
-        feasibility_penalty_factor=1.0,
     )
     env.reset()
     _, reward, terminated, _, info = env.step([1.0])
     assert not terminated
-    assert info["max_withdrawable_remaining"] == 0.0
     assert info["rate_capacity_clipped_action"] == 1.0
     assert info["executed_action"] == 0.0
     assert info["terminal_feasibility_clipped"] is True
-    assert info["excess_inventory"] == 0.0
-    assert info["feasibility_penalty"] == 0.0
     assert reward == 0.0
 
 
-def test_feasibility_penalty_for_inventory_that_cannot_be_injected() -> None:
+def test_terminal_feasibility_prevents_uninjectable_sale() -> None:
     """Terminal-feasibility clipping prevents shortfall from a sale."""
     env = make_env(
         prices=np.array([[10.0, 10.0]], dtype=np.float32),
@@ -136,19 +127,15 @@ def test_feasibility_penalty_for_inventory_that_cannot_be_injected() -> None:
             injection_rate=0.0,
             initial_inventory=4.0,
         ),
-        feasibility_penalty_factor=1.0,
     )
     env.reset(options={"initial_inventory": 4.0})
 
     _, reward, terminated, _, info = env.step([-1.0])
 
     assert not terminated
-    assert info["max_injectable_remaining"] == 0.0
     assert info["rate_capacity_clipped_action"] == -1.0
     assert info["executed_action"] == 0.0
     assert info["terminal_feasibility_clipped"] is True
-    assert info["inventory_shortfall"] == 0.0
-    assert info["feasibility_penalty"] == 0.0
     assert reward == 0.0
 
 
@@ -157,7 +144,6 @@ def test_terminal_feasibility_clips_final_action_to_target() -> None:
     env = make_env(
         prices=np.array([[10.0]], dtype=np.float32),
         storage_params=StorageParams(capacity=5.0, initial_inventory=1.0),
-        feasibility_penalty_factor=1.0,
     )
     env.reset()
     env.target_terminal_inventory = 0.0

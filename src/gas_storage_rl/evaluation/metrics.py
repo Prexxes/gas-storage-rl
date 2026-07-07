@@ -37,23 +37,9 @@ def add_risk_adjusted_return(
 
 def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
     """Summarizes per-step info dictionaries for one episode."""
-    economic_rewards = np.array(
+    rewards = np.array(
         [
-            info.get(
-                "economic_reward_raw",
-                info["raw_cashflow"] + info["terminal_penalty"],
-            )
-            for info in infos
-        ],
-        dtype=np.float64,
-    )
-    shaped_rewards = np.array(
-        [
-            (
-                info["shaped_reward_raw"]
-                if "shaped_reward_raw" in info
-                else info["raw_reward"]
-            )
+            info.get("raw_reward", info["raw_cashflow"] + info["terminal_penalty"])
             for info in infos
         ],
         dtype=np.float64,
@@ -65,12 +51,9 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
     actions = np.array([info["executed_action"] for info in infos], dtype=np.float64)
     storage = np.array([info["storage_level"] for info in infos], dtype=np.float64)
     target_inventory = float(infos[-1].get("target_terminal_inventory", 0.0))
-    reward_scale = float(infos[-1].get("reward_scale", 1.0))
     return {
-        "episode_return_raw": float(np.sum(economic_rewards)),
-        "episode_return_scaled": float(np.sum(economic_rewards) / reward_scale),
-        "episode_shaped_return_raw": float(np.sum(shaped_rewards)),
-        "episode_shaped_return_scaled": float(np.sum(scaled_rewards)),
+        "episode_return_raw": float(np.sum(rewards)),
+        "episode_return_scaled": float(np.sum(scaled_rewards)),
         "episode_length": float(len(infos)),
         "final_storage_level": float(storage[-1]),
         "terminal_deviation": float(abs(storage[-1] - target_inventory)),
@@ -103,25 +86,6 @@ def summarize_evaluation(
         "split": split,
         "mean_return_scaled": float(
             np.mean([item["episode_return_scaled"] for item in episode_summaries])
-        ),
-        "mean_shaped_return_scaled": float(
-            np.mean(
-                [
-                    item.get(
-                        "episode_shaped_return_scaled",
-                        item["episode_return_scaled"],
-                    )
-                    for item in episode_summaries
-                ]
-            )
-        ),
-        "mean_shaped_return_raw": float(
-            np.mean(
-                [
-                    item.get("episode_shaped_return_raw", item["episode_return_raw"])
-                    for item in episode_summaries
-                ]
-            )
         ),
         "mean_return_raw": float(np.mean(raw_returns)),
         "median_return_raw": float(np.median(raw_returns)),

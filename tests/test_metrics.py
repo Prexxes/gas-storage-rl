@@ -47,16 +47,15 @@ def test_add_risk_adjusted_return_uses_mean_minus_std_penalty() -> None:
     assert metrics["risk_adjusted_std_penalty"] == 0.5
 
 
-def test_episode_summary_uses_economic_reward_for_evaluation() -> None:
-    """Episode return is economic cashflow plus terminal penalty."""
+def test_episode_summary_uses_cashflow_reward_for_evaluation() -> None:
+    """Episode return is cashflow plus terminal penalty."""
     summary = summarize_episode_infos(
         [
             {
                 "raw_cashflow": -10.0,
                 "terminal_penalty": 0.0,
-                "economic_reward_raw": -10.0,
-                "shaped_reward_raw": 5.0,
-                "scaled_reward": 0.5,
+                "raw_reward": -10.0,
+                "scaled_reward": -1.0,
                 "reward_scale": 10.0,
                 "executed_action": 1.0,
                 "requested_action": 1.0,
@@ -66,9 +65,8 @@ def test_episode_summary_uses_economic_reward_for_evaluation() -> None:
             {
                 "raw_cashflow": 20.0,
                 "terminal_penalty": -1.0,
-                "economic_reward_raw": 19.0,
-                "shaped_reward_raw": 3.0,
-                "scaled_reward": 0.3,
+                "raw_reward": 19.0,
+                "scaled_reward": 1.9,
                 "reward_scale": 10.0,
                 "executed_action": -1.0,
                 "requested_action": -1.0,
@@ -78,7 +76,5 @@ def test_episode_summary_uses_economic_reward_for_evaluation() -> None:
         ]
     )
     assert summary["episode_return_raw"] == 9.0
-    assert summary["episode_return_scaled"] == 0.9
-    assert summary["episode_shaped_return_raw"] == 8.0
-    assert summary["episode_shaped_return_scaled"] == 0.8
+    assert np.isclose(summary["episode_return_scaled"], 0.9)
     assert summary["cumulative_cashflow"] == 10.0

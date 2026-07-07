@@ -70,36 +70,19 @@ The raw economic cashflow is computed from the executed action:
 raw_cashflow_t = -executed_action_t * price_t
 ```
 
-Buying gas is negative cashflow and selling gas is positive cashflow. Training uses
-a mark-to-market shaped reward so injected gas can receive a learning signal before
-it is sold. For non-terminal steps:
-
-```text
-mark_to_market_reward_t = v_(t+1) * (p_(t+1) - p_t)
-max_withdrawable_remaining = remaining_steps * withdrawal_rate
-excess_inventory = max(
-    0,
-    v_(t+1) - target_inventory - max_withdrawable_remaining,
-)
-feasibility_penalty = -lambda_feasibility * excess_inventory
-shaped_reward_t = mark_to_market_reward_t + feasibility_penalty
-```
-
-The terminal-reachability action clip normally prevents positive
-`excess_inventory` and `inventory_shortfall`; the feasibility penalty remains as a
-diagnostic and fallback for states that are already physically unreachable.
+Buying gas is negative cashflow and selling gas is positive cashflow.
 
 At the final step a terminal inventory penalty is applied:
 
 ```text
 terminal_penalty = -penalty_factor * mean_training_price * abs(v_T - target_inventory)
-shaped_reward_T = raw_cashflow_T + terminal_penalty - v_T * p_T
-scaled_reward = shaped_reward / reward_scale
+raw_reward_t = raw_cashflow_t + terminal_penalty_t
+scaled_reward = raw_reward / reward_scale
 ```
 
-The environment returns scaled shaped rewards to RL algorithms. Economic evaluation
-continues to use true cashflows plus terminal penalty through `economic_reward_raw`
-and `raw_cashflow` in `info`.
+For non-terminal steps, `terminal_penalty_t` is zero. The environment returns the
+scaled cashflow reward to RL algorithms and records the unscaled reward as
+`raw_reward` in `info`.
 
 ## Benchmarks
 
