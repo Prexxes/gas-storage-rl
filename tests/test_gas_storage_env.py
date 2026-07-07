@@ -11,6 +11,7 @@ def make_env(
     prices: np.ndarray | None = None,
     storage_params: StorageParams | None = None,
     feasibility_penalty_factor: float = 0.5,
+    reward_function: str = "mark_to_market",
 ) -> GasStorageEnv:
     """Creates a tiny deterministic environment."""
     price_paths = np.asarray(
@@ -29,6 +30,7 @@ def make_env(
         reward_scale=10.0,
         penalty_factor=0.5,
         feasibility_penalty_factor=feasibility_penalty_factor,
+        reward_function=reward_function,
         fixed_path_id=0,
     )
 
@@ -63,6 +65,21 @@ def test_mark_to_market_reward_is_used_for_training() -> None:
     assert buy_info["shaped_reward_raw"] == 10.0
     assert buy_reward == buy_info["scaled_reward"]
     assert sell_reward == sell_info["scaled_reward"]
+
+
+def test_economic_terminal_reward_function_uses_cashflow_for_training() -> None:
+    """Old reward mode trains on raw cashflow plus terminal penalty."""
+    env = make_env(reward_function="economic_terminal")
+    env.reset()
+
+    _, buy_reward, _, _, buy_info = env.step([1.0])
+
+    assert buy_info["reward_function"] == "economic_terminal"
+    assert buy_info["raw_cashflow"] == -10.0
+    assert buy_info["economic_reward_raw"] == -10.0
+    assert buy_info["mark_to_market_shaped_reward_raw"] == 10.0
+    assert buy_info["shaped_reward_raw"] == buy_info["economic_reward_raw"]
+    assert buy_reward == buy_info["economic_reward_raw"] / 10.0
 
 
 def test_final_action_is_clipped_to_avoid_terminal_penalty() -> None:

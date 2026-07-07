@@ -31,6 +31,7 @@ class GasStorageEnv(gym.Env):
         reward_scale: float | None = None,
         penalty_factor: float = 0.5,
         feasibility_penalty_factor: float = 0.5,
+        reward_function: str = "mark_to_market",
         initial_inventory_mean_fraction: float | None = None,
         initial_inventory_std_fraction: float = 0.0,
         fixed_path_id: int | None = None,
@@ -45,6 +46,11 @@ class GasStorageEnv(gym.Env):
         self.reward_scale = float(reward_scale or price_scale)
         self.penalty_factor = float(penalty_factor)
         self.feasibility_penalty_factor = float(feasibility_penalty_factor)
+        self.reward_function = str(reward_function)
+        if self.reward_function not in {"mark_to_market", "economic_terminal"}:
+            raise ValueError(
+                "reward_function must be 'mark_to_market' or 'economic_terminal'"
+            )
         self.initial_inventory_mean_fraction = initial_inventory_mean_fraction
         self.initial_inventory_std_fraction = float(initial_inventory_std_fraction)
         if (
@@ -196,7 +202,7 @@ class GasStorageEnv(gym.Env):
         if is_final:
             deviation = abs(self.storage_level - self.target_terminal_inventory)
             terminal_penalty = -self.lambda_terminal * deviation
-            shaped_reward_raw = (
+            mark_to_market_shaped_reward_raw = (
                 raw_cashflow + terminal_penalty - self.storage_level * price
             )
         else:
@@ -224,9 +230,15 @@ class GasStorageEnv(gym.Env):
                 excess_inventory + inventory_shortfall
             )
             mark_to_market_reward = self.storage_level * (next_price - price)
-            shaped_reward_raw = mark_to_market_reward + feasibility_penalty
+            mark_to_market_shaped_reward_raw = (
+                mark_to_market_reward + feasibility_penalty
+            )
 
         economic_reward_raw = raw_cashflow + terminal_penalty
+        if self.reward_function == "economic_terminal":
+            shaped_reward_raw = economic_reward_raw
+        else:
+            shaped_reward_raw = mark_to_market_shaped_reward_raw
         scaled_reward = shaped_reward_raw / self.reward_scale
         info = {
             "requested_action": requested_action,
@@ -239,12 +251,14 @@ class GasStorageEnv(gym.Env):
             "target_terminal_inventory": self.target_terminal_inventory,
             "price": price,
             "reward_scale": self.reward_scale,
+            "reward_function": self.reward_function,
             "raw_cashflow": raw_cashflow,
             "terminal_penalty": terminal_penalty,
             "economic_reward_raw": economic_reward_raw,
             "shaped_reward_raw": shaped_reward_raw,
             "raw_reward": shaped_reward_raw,
             "scaled_reward": scaled_reward,
+            "mark_to_market_shaped_reward_raw": mark_to_market_shaped_reward_raw,
             "mark_to_market_reward": mark_to_market_reward,
             "feasibility_penalty": feasibility_penalty,
             "excess_inventory": excess_inventory,

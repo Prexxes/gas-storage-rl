@@ -117,6 +117,7 @@ class TrainingLoggingCallback(BaseCallback):
             total_training_env_steps=self.num_timesteps,
         )
         metrics["algorithm_name"] = self.algorithm_name
+        metrics["evaluation_phase"] = "callback"
         mean_return = float(metrics["mean_return_raw"])
         add_risk_adjusted_return(metrics, self.risk_adjusted_std_penalty)
         self.experiment_logger.append_csv("evaluations.csv", metrics)

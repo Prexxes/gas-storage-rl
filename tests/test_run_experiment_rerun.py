@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import csv
 from pathlib import Path
 
 import pytest
@@ -158,3 +159,79 @@ def test_run_experiment_rerun_bypasses_existing_completed_run(
 
     with pytest.raises(RuntimeError, match="training path reached"):
         run_experiment(config, "ppo", seed_index=0, rerun=True)
+
+
+def test_run_experiment_appends_final_evaluation_after_callback_step(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Final validation is logged even when callback already logged final step."""
+    config = _base_config(tmp_path)
+
+    class FakeEnv:
+        """Minimal environment placeholder."""
+
+        def __init__(self, dataset, split, storage_params, **kwargs) -> None:
+            self.split = split
+
+    class FakeModel:
+        """Minimal SB3-like model."""
+
+        def __init__(self) -> None:
+            self.policy = object()
+            self.device = "cpu"
+
+        def set_logger(self, logger) -> None:
+            self.logger = logger
+
+        def learn(self, total_timesteps, callback) -> None:
+            callback.experiment_logger.append_csv(
+                "evaluations.csv",
+                {
+                    "total_training_env_steps": total_timesteps,
+                    "split": "validation",
+                    "mean_return_raw": 1.0,
+                    "std_return_raw": 0.0,
+                    "algorithm_name": "ppo",
+                    "evaluation_phase": "callback",
+                },
+            )
+            callback.last_validation_step = total_timesteps
+
+        def save(self, path) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.build_environment",
+        lambda config: (object(), object(), {}),
+    )
+    monkeypatch.setattr("gas_storage_rl.training.run_experiment.GasStorageEnv", FakeEnv)
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.make_sb3_agent",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_experiment.evaluate_policy_on_paths",
+        lambda *args, **kwargs: (
+            {
+                "total_training_env_steps": config["training_config"][
+                    "total_timesteps"
+                ],
+                "split": "validation",
+                "mean_return_raw": 2.0,
+                "std_return_raw": 0.0,
+            },
+            [],
+        ),
+    )
+
+    summary = run_experiment(config, "ppo", seed_index=0, rerun=True)
+
+    with (Path(summary["run_dir"]) / "evaluations.csv").open(
+        newline="",
+        encoding="utf-8",
+    ) as file:
+        rows = list(csv.DictReader(file))
+
+    assert [row["evaluation_phase"] for row in rows] == ["callback", "final"]
+    assert float(rows[-1]["mean_return_raw"]) == 2.0

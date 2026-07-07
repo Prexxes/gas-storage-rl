@@ -97,9 +97,13 @@ shaped_reward_T = raw_cashflow_T + terminal_penalty - v_T * p_T
 scaled_reward = shaped_reward / reward_scale
 ```
 
-The environment returns scaled shaped rewards to RL algorithms. Economic evaluation
-continues to use true cashflows plus terminal penalty through `economic_reward_raw`
-and `raw_cashflow` in `info`.
+The environment returns scaled shaped rewards to RL algorithms. Set
+`environment_config.reward_function` to `mark_to_market` for this default reward, or
+to `economic_terminal` to train on the old reward
+`raw_cashflow_t + terminal_penalty_t`. Economic evaluation continues to use true
+cashflows plus terminal penalty through `economic_reward_raw` and `raw_cashflow` in
+`info`, so reward-function ablations are compared against the same economic
+objective.
 
 ## Benchmarks
 
@@ -177,6 +181,22 @@ training-episode sequence. The same `(env_seed, agent_seed)` pair is derived for
 given `seed_index` independently of the selected algorithm, which supports paired
 PPO/SAC/TD3 experiment groups.
 
+Run a paired reward-function ablation from one base config:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_reward_ablation \
+  --config configs/historical_jump_c200.yaml \
+  --algorithm ppo \
+  --n-seeds 10
+```
+
+This runs `economic_terminal` and `mark_to_market` groups with the same
+`seed_index` derivation, then writes `paired_reward_ablation.csv` and
+`reward_ablation_summary.json` under `runs/reward_ablations/<ablation_id>/`.
+The CSV contains one row per paired seed and columns such as
+`old_mean_return_raw`, `new_mean_return_raw`, and `delta_mean_return_raw`, where
+positive deltas favor the new reward.
+
 Group metadata is stored under:
 
 ```text
@@ -197,6 +217,7 @@ Each RL run writes:
 - `metadata.json`
 - `metrics.csv`: completed training episodes
 - `evaluations.csv`: periodic validation according to `training_config.eval_freq`
+  plus a final post-training validation row marked with `evaluation_phase=final`
 - `best_validation_model.zip`
 - `best_risk_adjusted_validation_model.zip`: highest validation
   `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`

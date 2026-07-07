@@ -16,6 +16,7 @@ def _base_config() -> dict:
             "environment_name": "ou",
             "capacity": 30,
             "episode_length": 10,
+            "reward_function": "economic_terminal",
         },
         "dataset_config": {
             "n_train_paths": 4,
@@ -65,6 +66,7 @@ def test_effective_run_config_keeps_only_used_training_fields() -> None:
     effective = build_effective_run_config(_base_config(), "ppo", seed_index=3)
 
     assert "plotting_config" not in effective
+    assert effective["environment_config"]["reward_function"] == "economic_terminal"
     assert effective["evaluation_config"] == {
         "deterministic": True,
         "risk_adjusted_std_penalty": 0.5,

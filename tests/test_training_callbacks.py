@@ -69,6 +69,7 @@ def test_validation_callback_saves_risk_adjusted_model(
 
     callback._run_validation_if_due()
 
+    assert logger.rows[0][1]["evaluation_phase"] == "callback"
     assert logger.rows[0][1]["risk_adjusted_return_raw"] == 8.0
     assert tmp_path / "best_validation_model" in callback.model.saved_paths
     assert (

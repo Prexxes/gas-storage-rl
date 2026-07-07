@@ -136,6 +136,7 @@ def build_environment(
         "feasibility_penalty_factor": float(
             env_config.get("feasibility_penalty_factor", 0.5)
         ),
+        "reward_function": str(env_config.get("reward_function", "mark_to_market")),
         "initial_inventory_mean_fraction": float(
             env_config.get("initial_inventory_mean_fraction", 0.30)
         ),
