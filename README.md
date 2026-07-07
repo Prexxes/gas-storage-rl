@@ -185,8 +185,14 @@ Each RL run writes:
 - `best_risk_adjusted_validation_model.zip`: highest validation
   `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`
 - `final_model.zip`
-- `final_summary.json`
+- `final_summary.json`: final validation metrics plus
+  `AULC_validation_return_raw` and `normalized_AULC_validation_return_raw`
 - `sb3_logs/`
+
+Experiment-group `runs.csv` also includes the two validation AULC columns for
+completed or skipped runs whose summaries contain them. The normalized AULC divides
+the validation-return AULC by `training_config.total_timesteps`, which makes it useful
+for HPO comparisons across runs with the same validation protocol.
 
 The training command does not evaluate the synthetic test split or historical backtest
 split. Run holdout evaluations manually after model selection.

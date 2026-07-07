@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import csv
 import hashlib
 import json
 import time
@@ -15,7 +16,10 @@ import torch
 from gas_storage_rl.agents.sb3_factory import make_sb3_agent
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
-from gas_storage_rl.evaluation.metrics import add_risk_adjusted_return
+from gas_storage_rl.evaluation.metrics import (
+    add_risk_adjusted_return,
+    validation_return_aulc,
+)
 from gas_storage_rl.logging.experiment_logger import ExperimentLogger
 from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.training.callbacks import TrainingLoggingCallback
@@ -88,6 +92,15 @@ def load_pretrained_policy_state(model: Any, pretrained_policy: str | Path) -> P
     state_dict = torch.load(policy_path, map_location=model.device)
     model.policy.load_state_dict(state_dict)
     return policy_path
+
+
+def _read_evaluation_rows(run_dir: Path) -> list[dict[str, str]]:
+    """Reads periodic and final validation rows for one run."""
+    path = run_dir / "evaluations.csv"
+    if not path.exists():
+        return []
+    with path.open("r", newline="", encoding="utf-8") as file:
+        return list(csv.DictReader(file))
 
 
 def run_experiment(
@@ -187,6 +200,12 @@ def run_experiment(
         float(config.get("evaluation_config", {}).get("risk_adjusted_std_penalty", 0.5)),
     )
     logger.append_csv("evaluations.csv", validation_metrics)
+    validation_metrics.update(
+        validation_return_aulc(
+            _read_evaluation_rows(logger.run_dir),
+            total_timesteps,
+        )
+    )
     summary = {
         "status": "completed",
         "algorithm_name": algorithm,

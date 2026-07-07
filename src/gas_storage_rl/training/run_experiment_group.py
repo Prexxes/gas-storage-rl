@@ -51,6 +51,8 @@ def run_experiment_group(
             "agent_seed": int(run_config["seeds"]["agent_seed"]),
             "status": "running",
             "run_dir": "",
+            "AULC_validation_return_raw": "",
+            "normalized_AULC_validation_return_raw": "",
             "error": "",
         }
         rows.append(row)
@@ -66,6 +68,7 @@ def run_experiment_group(
             )
             row["status"] = summary.get("status", "completed")
             row["run_dir"] = summary["run_dir"]
+            _record_validation_aulc(row, summary)
         except Exception as error:  # Continue so remaining seeds still run.
             row["status"] = "failed"
             row["error"] = f"{type(error).__name__}: {error}"
@@ -89,6 +92,17 @@ def run_experiment_group(
     }
     _write_json(group_dir / "group_metadata.json", metadata)
     return {"group_dir": str(group_dir), **metadata, "runs": rows}
+
+
+def _record_validation_aulc(row: dict[str, Any], summary: dict[str, Any]) -> None:
+    """Copies validation AULC metrics from a run summary into a group row."""
+    validation = summary.get("validation", {})
+    for key in (
+        "AULC_validation_return_raw",
+        "normalized_AULC_validation_return_raw",
+    ):
+        if key in validation:
+            row[key] = validation[key]
 
 
 def _create_group_dir(

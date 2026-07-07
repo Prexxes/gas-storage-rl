@@ -88,6 +88,10 @@ def test_experiment_group_records_skipped_runs(
         return {
             "status": "skipped" if seed_index == 0 else "completed",
             "run_dir": str(tmp_path / f"run-{seed_index}"),
+            "validation": {
+                "AULC_validation_return_raw": 100.0 + seed_index,
+                "normalized_AULC_validation_return_raw": 10.0 + seed_index,
+            },
         }
 
     monkeypatch.setattr(
@@ -114,3 +118,8 @@ def test_experiment_group_records_skipped_runs(
         )
     )
     assert [row["status"] for row in rows] == ["skipped", "completed"]
+    assert [row["AULC_validation_return_raw"] for row in rows] == ["100.0", "101.0"]
+    assert [row["normalized_AULC_validation_return_raw"] for row in rows] == [
+        "10.0",
+        "11.0",
+    ]

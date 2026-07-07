@@ -23,6 +23,35 @@ def aulc(steps: np.ndarray, returns: np.ndarray) -> float:
     return float(np.trapezoid(returns[order], steps[order]))
 
 
+def validation_return_aulc(
+    evaluation_rows: list[dict],
+    total_timesteps: int,
+) -> dict[str, float]:
+    """Computes validation-return AULC metrics from evaluation rows.
+
+    If multiple rows share the same training step, the last row is used. This
+    makes the final post-training validation replace the callback validation at
+    the same step.
+    """
+    step_to_return = {}
+    for row in evaluation_rows:
+        step = int(row["total_training_env_steps"])
+        step_to_return[step] = float(row["mean_return_raw"])
+    if not step_to_return:
+        raw_aulc = 0.0
+    else:
+        steps = np.array(list(step_to_return.keys()), dtype=np.float64)
+        returns = np.array(list(step_to_return.values()), dtype=np.float64)
+        raw_aulc = aulc(steps, returns)
+    normalized_aulc = (
+        raw_aulc / float(total_timesteps) if total_timesteps > 0 else 0.0
+    )
+    return {
+        "AULC_validation_return_raw": raw_aulc,
+        "normalized_AULC_validation_return_raw": normalized_aulc,
+    }
+
+
 def add_risk_adjusted_return(
     metrics: dict,
     std_penalty: float,

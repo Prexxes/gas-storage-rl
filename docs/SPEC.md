@@ -180,9 +180,16 @@ Sample efficiency is measured with area under the validation learning curve:
 
 ```text
 AULC = integral validation_return(step) d step
+normalized_AULC = AULC / total_timesteps
 ```
 
-The implementation uses trapezoidal integration over evaluation checkpoints.
+The implementation uses trapezoidal integration over `mean_return_raw` evaluation
+checkpoints in `evaluations.csv`. If multiple validation rows share the same
+`total_training_env_steps`, the last row is used, so final post-training validation
+replaces a callback validation at the same step. `final_summary.json` stores
+`AULC_validation_return_raw` and `normalized_AULC_validation_return_raw` under
+`validation`; experiment-group `runs.csv` copies both columns for HPO and group
+comparison.
 
 ## Reproducibility
 

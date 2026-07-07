@@ -8,6 +8,7 @@ from gas_storage_rl.evaluation.metrics import (
     interquartile_mean,
     summarize_episode_infos,
     summarize_evaluation,
+    validation_return_aulc,
 )
 
 
@@ -15,6 +16,21 @@ def test_metrics_aulc_and_interquartile_mean() -> None:
     """AULC and interquartile mean are computed."""
     assert aulc(np.array([0, 1, 2]), np.array([1, 2, 3])) == 4.0
     assert interquartile_mean(np.array([0, 1, 2, 100])) == 1.5
+
+
+def test_validation_return_aulc_uses_last_duplicate_step() -> None:
+    """Final validation replaces callback validation at the same step."""
+    metrics = validation_return_aulc(
+        [
+            {"total_training_env_steps": 0, "mean_return_raw": 0.0},
+            {"total_training_env_steps": 10, "mean_return_raw": 10.0},
+            {"total_training_env_steps": 10, "mean_return_raw": 20.0},
+        ],
+        total_timesteps=10,
+    )
+
+    assert metrics["AULC_validation_return_raw"] == 100.0
+    assert metrics["normalized_AULC_validation_return_raw"] == 10.0
 
 
 def test_evaluation_uses_total_training_env_steps() -> None:
