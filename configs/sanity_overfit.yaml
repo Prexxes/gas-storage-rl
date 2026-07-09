@@ -1,0 +1,44 @@
+environment_config:
+  environment_name: sanity_overfit
+  capacity: 1.0
+  injection_rate: 1.0
+  withdrawal_rate: 1.0
+  initial_inventory: 0.0
+  target_terminal_inventory: 0.0
+  price_scale: 40.0
+  reward_scale: 40.0
+  penalty_factor: 1.0
+training_config:
+  total_timesteps: 100000
+  eval_freq: 2500
+  n_seeds: 3
+evaluation_config:
+  deterministic: true
+  minimum_oracle_ratio: 0.90
+  maximum_terminal_deviation: 0.01
+  minimum_successful_seeds: 2
+seeds:
+  master_seed: 1701
+agent_config:
+  ppo:
+    policy: MlpPolicy
+    device: cpu
+    gamma: 1.0
+    n_steps: 256
+    batch_size: 64
+  sac:
+    policy: MlpPolicy
+    device: cpu
+    gamma: 1.0
+    learning_starts: 1000
+    buffer_size: 100000
+    batch_size: 256
+  td3:
+    policy: MlpPolicy
+    device: cpu
+    gamma: 1.0
+    learning_starts: 1000
+    buffer_size: 100000
+    batch_size: 256
+logging_config:
+  run_dir: runs/sanity_overfit

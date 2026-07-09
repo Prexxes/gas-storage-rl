@@ -195,6 +195,39 @@ comparison.
 
 A master seed should derive dataset, environment, agent, evaluation, and plotting seeds. Dataset splits use disjoint deterministic seeds. For a given environment and capacity, all algorithms train on the same train paths and are evaluated on the same validation and test paths.
 
+## Deterministic overfitting diagnostic
+
+Before long experiment groups, `gas_storage_rl.training.run_overfit_check` can
+verify that PPO, SAC, and TD3 can intentionally memorize one fixed episode. The
+episode contains 20 alternating low/high prices:
+
+```text
+10, 30, 12, 28, 8, 35, 15, 25, 9, 32,
+11, 27, 7, 40, 14, 24, 6, 38, 13, 29
+```
+
+Capacity, injection rate, and withdrawal rate are one, and both initial and
+target inventory are zero. Perfect foresight therefore alternates injection and
+withdrawal and earns a raw return of `203`. Training and evaluation deliberately
+use the same single path; this is a memorization and training-pipeline check, not
+a generalization result.
+
+The default diagnostic trains each algorithm for 100,000 environment steps
+(5,000 episodes) with three seeds. At step zero and every 2,500 steps it pauses
+training and runs one deterministic, update-free evaluation episode. A seed
+passes when it reaches at least 90% of the oracle return with terminal deviation
+at most 0.01. An algorithm passes when at least two of three seeds pass.
+
+```bash
+python -m gas_storage_rl.training.run_overfit_check \
+  --config configs/sanity_overfit.yaml \
+  --algorithms ppo sac td3
+```
+
+Reports, deterministic actions, evaluation curves, and best/final models are
+stored below `runs/sanity_overfit/`. The short pytest coverage only verifies the
+runner and its invariants; it does not impose stochastic RL convergence on CI.
+
 Training commands skip duplicate completed runs by default. Duplicate detection compares the effective run configuration that affects training and validation, including environment settings, dataset settings, price-process parameters, training settings, algorithm hyperparameters, seeds, and pretraining policy. Organizational metadata such as `experiment_group_id` and log directory paths does not affect duplicate detection. Passing `--rerun` forces a new timestamped run.
 
 ## Price Dataset Cache
