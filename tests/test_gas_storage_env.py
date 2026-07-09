@@ -1,6 +1,8 @@
 """Tests for the Gymnasium gas storage environment."""
 
 import numpy as np
+from gymnasium.utils.env_checker import check_env as gymnasium_check_env
+from stable_baselines3.common.env_checker import check_env as sb3_check_env
 
 from gas_storage_rl.data.path_dataset import PathDataset
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
@@ -46,6 +48,14 @@ def test_gymnasium_reset_step_api_shape_and_dtype() -> None:
     assert not terminated
     assert not truncated
     assert info["split"] == "train"
+
+
+def test_environment_passes_gymnasium_and_sb3_checks() -> None:
+    """Environment satisfies the Gymnasium and SB3 environment contracts."""
+    env = make_env()
+
+    gymnasium_check_env(env)
+    sb3_check_env(env, warn=True)
 
 
 def test_cashflow_reward_is_used_for_training() -> None:
