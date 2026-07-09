@@ -90,7 +90,7 @@ def test_experiment_group_records_skipped_runs(
             "run_dir": str(tmp_path / f"run-{seed_index}"),
             "validation": {
                 "AULC_validation_return_raw": 100.0 + seed_index,
-                "normalized_AULC_validation_return_raw": 10.0 + seed_index,
+                "max_validation_mean_return_raw": 10.0 + seed_index,
             },
         }
 
@@ -119,7 +119,7 @@ def test_experiment_group_records_skipped_runs(
     )
     assert [row["status"] for row in rows] == ["skipped", "completed"]
     assert [row["AULC_validation_return_raw"] for row in rows] == ["100.0", "101.0"]
-    assert [row["normalized_AULC_validation_return_raw"] for row in rows] == [
+    assert [row["max_validation_mean_return_raw"] for row in rows] == [
         "10.0",
         "11.0",
     ]

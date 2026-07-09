@@ -180,16 +180,33 @@ Sample efficiency is measured with area under the validation learning curve:
 
 ```text
 AULC = integral validation_return(step) d step
-normalized_AULC = AULC / total_timesteps
 ```
 
 The implementation uses trapezoidal integration over `mean_return_raw` evaluation
 checkpoints in `evaluations.csv`. If multiple validation rows share the same
 `total_training_env_steps`, the last row is used, so final post-training validation
-replaces a callback validation at the same step. `final_summary.json` stores
-`AULC_validation_return_raw` and `normalized_AULC_validation_return_raw` under
-`validation`; experiment-group `runs.csv` copies both columns for HPO and group
-comparison.
+replaces a callback validation at the same step. `final_summary.json` stores the
+unnormalized `AULC_validation_return_raw` and
+`max_validation_mean_return_raw` under `validation`; experiment-group `runs.csv`
+copies both columns for group comparison.
+
+## Clipping ablation
+
+The environment supports three `clipping_variant` values. V0 applies physical
+rate, capacity, and inventory clipping but no terminal-reachability clipping. V1
+adds terminal-reachability clipping. V2 uses the same terminal shield and adds a
+linear training penalty:
+
+```text
+terminal_clip_distance = abs(rate_capacity_clipped_action - executed_action)
+clip_penalty = (
+    -clip_penalty_factor * mean_training_price * terminal_clip_distance
+)
+```
+
+For V2, `shaped_raw_reward = raw_reward + clip_penalty` is used for learning.
+The economic `raw_reward = raw_cashflow + terminal_penalty` remains the basis of
+validation returns, best-model selection, and AULC.
 
 ## Reproducibility
 

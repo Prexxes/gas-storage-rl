@@ -133,6 +133,10 @@ def build_environment(
             env_config.get("reward_scale", price_config.get("base_price", 50.0))
         ),
         "penalty_factor": float(env_config.get("penalty_factor", 0.5)),
+        "clipping_variant": str(env_config.get("clipping_variant", "v1")),
+        "clip_penalty_factor": float(
+            env_config.get("clip_penalty_factor", 1.0)
+        ),
         "initial_inventory_mean_fraction": float(
             env_config.get("initial_inventory_mean_fraction", 0.30)
         ),

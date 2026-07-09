@@ -262,6 +262,6 @@ def test_run_experiment_logs_final_validation_after_exact_eval_step(
     ]
     assert summary["validation"]["total_training_env_steps"] == 16
     assert summary["validation"]["AULC_validation_return_raw"] == 104.0
-    assert summary["validation"]["normalized_AULC_validation_return_raw"] == 6.5
+    assert summary["validation"]["max_validation_mean_return_raw"] == 10.0
     assert len(evaluation_rows) == 1
     assert evaluation_rows[0]["total_training_env_steps"] == 16

@@ -118,6 +118,49 @@ def test_terminal_feasibility_prevents_unwithdrawable_purchase() -> None:
     assert reward == 0.0
 
 
+def test_v0_uses_only_physical_clipping_and_terminal_penalty() -> None:
+    """V0 leaves terminal feasibility to the policy."""
+    env = make_env(prices=np.array([[10.0]], dtype=np.float32))
+    env.clipping_variant = "v0"
+    env.reset(options={"initial_inventory": 0.0})
+
+    reward, info = _step_reward_and_info(env, [1.0])
+
+    assert info["executed_action"] == 1.0
+    assert info["terminal_feasibility_clipped"] is False
+    assert info["clip_penalty"] == 0.0
+    assert info["terminal_penalty"] < 0.0
+    assert reward == info["raw_reward"] / env.reward_scale
+
+
+def test_v2_penalizes_only_terminal_clip_distance() -> None:
+    """V2 returns shaped reward while retaining economic raw reward."""
+    prices = np.array([[10.0]], dtype=np.float32)
+    env = make_env(prices=prices)
+    env.clipping_variant = "v2"
+    env.lambda_clip = 10.0
+    env.reset(options={"initial_inventory": 0.0})
+
+    reward, info = _step_reward_and_info(env, [1.0])
+
+    assert info["rate_capacity_clipped_action"] == 1.0
+    assert info["executed_action"] == 0.0
+    assert info["terminal_clip_distance"] == 1.0
+    assert info["raw_reward"] == 0.0
+    assert info["clip_penalty"] == -10.0
+    assert info["shaped_raw_reward"] == -10.0
+    assert reward == -1.0
+
+
+def _step_reward_and_info(
+    env: GasStorageEnv,
+    action: list[float],
+) -> tuple[float, dict]:
+    """Returns reward and info from one environment step."""
+    _, reward, _, _, info = env.step(action)
+    return reward, info
+
+
 def test_terminal_feasibility_prevents_uninjectable_sale() -> None:
     """Terminal-feasibility clipping prevents shortfall from a sale."""
     env = make_env(

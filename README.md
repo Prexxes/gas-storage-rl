@@ -174,6 +174,24 @@ matches an already completed run and `--rerun` is not set, it is recorded as
 `skipped` in `runs.csv`. If one seed fails, the failure is recorded in `runs.csv`
 and the remaining seeds continue.
 
+Run the clipping ablation with three paired seeds for every variant and algorithm:
+
+```bash
+for variant in v0 v1 v2; do
+  for algorithm in ppo sac td3; do
+    PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
+      --config "configs/clip_ablation_${variant}.yaml" \
+      --algorithm "${algorithm}"
+  done
+done
+```
+
+The ablation configurations use 260,000 training steps, validation every 20,000
+steps, and a new shared seed family. V0 applies only physical clipping, V1 also
+applies terminal-reachability clipping, and V2 adds the linear training penalty
+`-clip_penalty_factor * mean_training_price * terminal_clip_distance`. The V2
+penalty is excluded from economic `mean_return_raw` and validation AULC.
+
 Each RL run writes:
 
 - `config.json`
@@ -186,13 +204,13 @@ Each RL run writes:
   `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`
 - `final_model.zip`
 - `final_summary.json`: final validation metrics plus
-  `AULC_validation_return_raw` and `normalized_AULC_validation_return_raw`
+  unnormalized `AULC_validation_return_raw` and
+  `max_validation_mean_return_raw`
 - `sb3_logs/`
 
-Experiment-group `runs.csv` also includes the two validation AULC columns for
-completed or skipped runs whose summaries contain them. The normalized AULC divides
-the validation-return AULC by `training_config.total_timesteps`, which makes it useful
-for HPO comparisons across runs with the same validation protocol.
+Experiment-group `runs.csv` also includes the unnormalized validation AULC and
+maximum validation mean return for completed or skipped runs whose summaries
+contain them.
 
 The training command does not evaluate the synthetic test split or historical backtest
 split. Run holdout evaluations manually after model selection.

@@ -27,7 +27,7 @@ def validation_return_aulc(
     evaluation_rows: list[dict],
     total_timesteps: int,
 ) -> dict[str, float]:
-    """Computes validation-return AULC metrics from evaluation rows.
+    """Computes validation learning-curve metrics from evaluation rows.
 
     If multiple rows share the same training step, the last row is used. This
     makes the final post-training validation replace the callback validation at
@@ -39,16 +39,15 @@ def validation_return_aulc(
         step_to_return[step] = float(row["mean_return_raw"])
     if not step_to_return:
         raw_aulc = 0.0
+        maximum_return = float("-inf")
     else:
         steps = np.array(list(step_to_return.keys()), dtype=np.float64)
         returns = np.array(list(step_to_return.values()), dtype=np.float64)
         raw_aulc = aulc(steps, returns)
-    normalized_aulc = (
-        raw_aulc / float(total_timesteps) if total_timesteps > 0 else 0.0
-    )
+        maximum_return = float(np.max(returns))
     return {
         "AULC_validation_return_raw": raw_aulc,
-        "normalized_AULC_validation_return_raw": normalized_aulc,
+        "max_validation_mean_return_raw": maximum_return,
     }
 
 
@@ -73,8 +72,22 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
         ],
         dtype=np.float64,
     )
-    scaled_rewards = np.array(
-        [info["scaled_reward"] for info in infos],
+    shaped_rewards = np.array(
+        [info.get("shaped_raw_reward", info["raw_reward"]) for info in infos],
+        dtype=np.float64,
+    )
+    economic_scaled_rewards = np.array(
+        [
+            info.get(
+                "economic_scaled_reward",
+                info["raw_reward"] / info["reward_scale"],
+            )
+            for info in infos
+        ],
+        dtype=np.float64,
+    )
+    shaped_scaled_rewards = np.array(
+        [info.get("shaped_scaled_reward", info["scaled_reward"]) for info in infos],
         dtype=np.float64,
     )
     actions = np.array([info["executed_action"] for info in infos], dtype=np.float64)
@@ -82,7 +95,9 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
     target_inventory = float(infos[-1].get("target_terminal_inventory", 0.0))
     return {
         "episode_return_raw": float(np.sum(rewards)),
-        "episode_return_scaled": float(np.sum(scaled_rewards)),
+        "episode_return_scaled": float(np.sum(economic_scaled_rewards)),
+        "episode_shaped_return_raw": float(np.sum(shaped_rewards)),
+        "episode_shaped_return_scaled": float(np.sum(shaped_scaled_rewards)),
         "episode_length": float(len(infos)),
         "final_storage_level": float(storage[-1]),
         "terminal_deviation": float(abs(storage[-1] - target_inventory)),
@@ -95,6 +110,20 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
                     for info in infos
                 ]
             )
+        ),
+        "number_of_terminal_clipped_actions": float(
+            np.sum(
+                [
+                    info.get("terminal_feasibility_clipped", False)
+                    for info in infos
+                ]
+            )
+        ),
+        "cumulative_terminal_clip_distance": float(
+            np.sum([info.get("terminal_clip_distance", 0.0) for info in infos])
+        ),
+        "cumulative_clip_penalty": float(
+            np.sum([info.get("clip_penalty", 0.0) for info in infos])
         ),
         "total_injected_volume": float(np.sum(np.maximum(actions, 0.0))),
         "total_withdrawn_volume": float(-np.sum(np.minimum(actions, 0.0))),
@@ -110,6 +139,12 @@ def summarize_evaluation(
 ) -> dict[str, float | str]:
     """Summarizes multiple episode results."""
     raw_returns = np.array([item["episode_return_raw"] for item in episode_summaries])
+    shaped_raw_returns = np.array(
+        [
+            item.get("episode_shaped_return_raw", item["episode_return_raw"])
+            for item in episode_summaries
+        ]
+    )
     return {
         "total_training_env_steps": total_training_env_steps,
         "split": split,
@@ -117,6 +152,18 @@ def summarize_evaluation(
             np.mean([item["episode_return_scaled"] for item in episode_summaries])
         ),
         "mean_return_raw": float(np.mean(raw_returns)),
+        "mean_shaped_return_scaled": float(
+            np.mean(
+                [
+                    item.get(
+                        "episode_shaped_return_scaled",
+                        item["episode_return_scaled"],
+                    )
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_shaped_return_raw": float(np.mean(shaped_raw_returns)),
         "median_return_raw": float(np.median(raw_returns)),
         "std_return_raw": float(np.std(raw_returns)),
         "min_return_raw": float(np.min(raw_returns)),
@@ -135,6 +182,30 @@ def summarize_evaluation(
             np.mean(
                 [
                     item["number_of_constrained_actions"]
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_number_of_terminal_clipped_actions": float(
+            np.mean(
+                [
+                    item.get("number_of_terminal_clipped_actions", 0.0)
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_cumulative_terminal_clip_distance": float(
+            np.mean(
+                [
+                    item.get("cumulative_terminal_clip_distance", 0.0)
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_cumulative_clip_penalty": float(
+            np.mean(
+                [
+                    item.get("cumulative_clip_penalty", 0.0)
                     for item in episode_summaries
                 ]
             )

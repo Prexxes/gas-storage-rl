@@ -30,7 +30,7 @@ def test_validation_return_aulc_uses_last_duplicate_step() -> None:
     )
 
     assert metrics["AULC_validation_return_raw"] == 100.0
-    assert metrics["normalized_AULC_validation_return_raw"] == 10.0
+    assert metrics["max_validation_mean_return_raw"] == 20.0
 
 
 def test_evaluation_uses_total_training_env_steps() -> None:
@@ -94,3 +94,35 @@ def test_episode_summary_uses_cashflow_reward_for_evaluation() -> None:
     assert summary["episode_return_raw"] == 9.0
     assert np.isclose(summary["episode_return_scaled"], 0.9)
     assert summary["cumulative_cashflow"] == 10.0
+
+
+def test_episode_summary_separates_economic_and_shaped_returns() -> None:
+    """Clip penalties affect shaped training return but not economic return."""
+    summary = summarize_episode_infos(
+        [
+            {
+                "raw_cashflow": 2.0,
+                "terminal_penalty": 0.0,
+                "raw_reward": 2.0,
+                "shaped_raw_reward": 1.5,
+                "scaled_reward": 0.75,
+                "economic_scaled_reward": 1.0,
+                "shaped_scaled_reward": 0.75,
+                "reward_scale": 2.0,
+                "executed_action": 0.0,
+                "requested_action": 1.0,
+                "storage_level": 0.0,
+                "target_terminal_inventory": 0.0,
+                "terminal_feasibility_clipped": True,
+                "terminal_clip_distance": 0.5,
+                "clip_penalty": -0.5,
+            }
+        ]
+    )
+
+    assert summary["episode_return_raw"] == 2.0
+    assert summary["episode_return_scaled"] == 1.0
+    assert summary["episode_shaped_return_raw"] == 1.5
+    assert summary["episode_shaped_return_scaled"] == 0.75
+    assert summary["cumulative_terminal_clip_distance"] == 0.5
+    assert summary["cumulative_clip_penalty"] == -0.5

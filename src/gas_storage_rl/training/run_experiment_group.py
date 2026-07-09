@@ -52,7 +52,7 @@ def run_experiment_group(
             "status": "running",
             "run_dir": "",
             "AULC_validation_return_raw": "",
-            "normalized_AULC_validation_return_raw": "",
+            "max_validation_mean_return_raw": "",
             "error": "",
         }
         rows.append(row)
@@ -99,7 +99,7 @@ def _record_validation_aulc(row: dict[str, Any], summary: dict[str, Any]) -> Non
     validation = summary.get("validation", {})
     for key in (
         "AULC_validation_return_raw",
-        "normalized_AULC_validation_return_raw",
+        "max_validation_mean_return_raw",
     ):
         if key in validation:
             row[key] = validation[key]
