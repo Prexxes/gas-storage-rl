@@ -1,0 +1,114 @@
+environment_config:
+  environment_name: deterministic_frozen_observation_ablation
+  episode_length: 90
+  capacity: 10.0
+  injection_rate: 1.0
+  withdrawal_rate: 1.0
+  initial_inventory: 5.0
+  target_terminal_inventory: 5.0
+  price_scale: 40.0
+  reward_scale: 40.0
+  penalty_factor: 1.0
+
+observation_ablation_config:
+  frozen_episodes:
+    - start_date: "2020-01-01"
+      initial_inventory: 2.0
+    - start_date: "2020-04-01"
+      initial_inventory: 5.0
+    - start_date: "2020-07-01"
+      initial_inventory: 8.0
+    - start_date: "2020-10-01"
+      initial_inventory: 5.0
+  variants:
+    full:
+      inventory: true
+      price: true
+      calendar: true
+      remaining_time: true
+      target_inventory: true
+    price_inventory_only:
+      inventory: true
+      price: true
+      calendar: false
+      remaining_time: false
+      target_inventory: false
+    no_calendar:
+      inventory: true
+      price: true
+      calendar: false
+      remaining_time: true
+      target_inventory: true
+    no_remaining_time:
+      inventory: true
+      price: true
+      calendar: true
+      remaining_time: false
+      target_inventory: true
+    no_target_inventory:
+      inventory: true
+      price: true
+      calendar: true
+      remaining_time: true
+      target_inventory: false
+    no_price:
+      inventory: true
+      price: false
+      calendar: true
+      remaining_time: true
+      target_inventory: true
+    no_inventory:
+      inventory: false
+      price: true
+      calendar: true
+      remaining_time: true
+      target_inventory: true
+
+training_config:
+  total_timesteps: 100000
+  eval_freq: 2500
+  n_seeds: 3
+
+evaluation_config:
+  minimum_oracle_ratio: 0.85
+  maximum_terminal_deviation: 0.25
+  minimum_successful_seeds: 2
+
+logging_config:
+  run_dir: runs/observation_ablation
+
+seeds:
+  master_seed: 2701
+
+agent_config:
+  ppo:
+    policy: MlpPolicy
+    gamma: 1.0
+    learning_rate: 0.0003
+    n_steps: 512
+    batch_size: 128
+    n_epochs: 10
+    device: cpu
+    verbose: 0
+  sac:
+    policy: MlpPolicy
+    gamma: 1.0
+    learning_rate: 0.0003
+    learning_starts: 1000
+    buffer_size: 100000
+    batch_size: 256
+    train_freq: 1
+    gradient_steps: 1
+    device: cpu
+    verbose: 0
+  td3:
+    policy: MlpPolicy
+    gamma: 1.0
+    learning_rate: 0.0003
+    learning_starts: 1000
+    buffer_size: 100000
+    batch_size: 256
+    train_freq: 1
+    gradient_steps: 1
+    device: cpu
+    verbose: 0

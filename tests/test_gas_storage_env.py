@@ -178,6 +178,59 @@ def test_normalized_observation_values() -> None:
     )
 
 
+def test_observation_features_can_be_masked() -> None:
+    """Configured feature ablations keep the six-dimensional observation shape."""
+    prices = np.array([[10.0, 20.0, 30.0]], dtype=np.float32)
+    dataset = PathDataset(
+        {"train": prices},
+        {"train": 1},
+        {"train": [{"start_date": "2025-06-06", "end_date": "2025-06-08"}]},
+        initial_inventories_by_split={"train": np.array([1.0])},
+    )
+    env = GasStorageEnv(
+        dataset,
+        "train",
+        StorageParams(capacity=2.0),
+        price_scale=10.0,
+        observation_features={
+            "inventory": False,
+            "price": False,
+            "calendar": False,
+            "remaining_time": False,
+            "target_inventory": False,
+        },
+        fixed_path_id=0,
+    )
+
+    obs, _ = env.reset()
+
+    assert obs.shape == (6,)
+    assert np.allclose(
+        obs,
+        np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+
+def test_unknown_observation_feature_is_rejected() -> None:
+    """Observation masks fail fast for misspelled feature names."""
+    dataset = PathDataset(
+        {"train": np.array([[10.0]], dtype=np.float32)},
+        {"train": 1},
+    )
+
+    try:
+        GasStorageEnv(
+            dataset,
+            "train",
+            StorageParams(capacity=2.0),
+            observation_features={"calender": False},
+        )
+    except ValueError as exc:
+        assert "calender" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for unknown observation feature")
+
+
 def test_observation_uses_path_calendar_date() -> None:
     """Calendar features reflect a historical path's actual start date."""
     prices = np.array([[10.0, 20.0, 30.0]], dtype=np.float32)

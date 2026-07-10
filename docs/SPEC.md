@@ -228,6 +228,42 @@ Reports, deterministic actions, evaluation curves, and best/final models are
 stored below `runs/sanity_overfit/`. The short pytest coverage only verifies the
 runner and its invariants; it does not impose stochastic RL convergence on CI.
 
+## Observation Ablation Diagnostic
+
+Observation ablations keep the environment observation shape fixed at six
+features:
+
+```text
+[inventory / capacity, price / price_scale, sin(day), cos(day),
+ remaining_time, target_inventory / capacity]
+```
+
+Disabled features are replaced by neutral constants rather than removed from the
+vector. Inventory, price, remaining time, and target inventory are set to `0`;
+calendar is set to `(sin, cos) = (0, 1)`. This keeps SB3 policy architectures
+and saved-model interfaces comparable across ablations.
+
+The frozen deterministic diagnostic uses four 90-step episodes with fixed
+start dates and initial inventories. Prices are deterministic seasonal paths
+with a short cycle and fixed local spikes/dips. Training and validation use the
+same four episodes for the overfit-style sanity check, and each validation
+episode is scored against a perfect-foresight reference with a practically hard
+terminal target, matching the environment's terminal-feasibility clipping.
+
+Default variants are `full`, `price_inventory_only`, `no_calendar`,
+`no_remaining_time`, `no_target_inventory`, `no_price`, and `no_inventory`.
+Evaluation is deterministic and update-free at step zero, periodically during
+training, and once after the final update.
+
+```bash
+python -m gas_storage_rl.training.run_observation_ablation \
+  --config configs/sanity_observation_ablation.yaml \
+  --algorithms ppo sac td3
+```
+
+Reports, evaluation curves, and final models are stored below
+`runs/observation_ablation/`.
+
 Training commands skip duplicate completed runs by default. Duplicate detection compares the effective run configuration that affects training and validation, including environment settings, dataset settings, price-process parameters, training settings, algorithm hyperparameters, seeds, and pretraining policy. Organizational metadata such as `experiment_group_id` and log directory paths does not affect duplicate detection. Passing `--rerun` forces a new timestamped run.
 
 ## Price Dataset Cache

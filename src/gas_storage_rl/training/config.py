@@ -141,6 +141,10 @@ def build_environment(
         ),
         "seed": int(seeds.get("env_seed", 0)),
     }
+    if "observation_features" in env_config:
+        env_kwargs["observation_features"] = dict(
+            env_config["observation_features"]
+        )
     return dataset, storage_params, env_kwargs
 
 

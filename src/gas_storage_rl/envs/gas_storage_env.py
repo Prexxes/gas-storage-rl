@@ -16,6 +16,14 @@ from gas_storage_rl.envs.storage_dynamics import (
     clip_storage_action_to_terminal_feasibility,
 )
 
+DEFAULT_OBSERVATION_FEATURES = {
+    "inventory": True,
+    "price": True,
+    "calendar": True,
+    "remaining_time": True,
+    "target_inventory": True,
+}
+
 
 class GasStorageEnv(gym.Env):
     """Continuous-control gas storage environment."""
@@ -32,6 +40,7 @@ class GasStorageEnv(gym.Env):
         penalty_factor: float = 0.5,
         initial_inventory_mean_fraction: float | None = None,
         initial_inventory_std_fraction: float = 0.0,
+        observation_features: dict[str, bool] | None = None,
         fixed_path_id: int | None = None,
         seed: int | None = None,
     ) -> None:
@@ -45,6 +54,9 @@ class GasStorageEnv(gym.Env):
         self.penalty_factor = float(penalty_factor)
         self.initial_inventory_mean_fraction = initial_inventory_mean_fraction
         self.initial_inventory_std_fraction = float(initial_inventory_std_fraction)
+        self.observation_features = _validate_observation_features(
+            observation_features
+        )
         if (
             self.initial_inventory_mean_fraction is not None
             and not 0.0 <= self.initial_inventory_mean_fraction <= 1.0
@@ -215,6 +227,22 @@ class GasStorageEnv(gym.Env):
 
     def _observation(self) -> np.ndarray:
         """Builds a normalized observation."""
+        observation = self._raw_observation()
+        if not self.observation_features["inventory"]:
+            observation[0] = 0.0
+        if not self.observation_features["price"]:
+            observation[1] = 0.0
+        if not self.observation_features["calendar"]:
+            observation[2] = 0.0
+            observation[3] = 1.0
+        if not self.observation_features["remaining_time"]:
+            observation[4] = 0.0
+        if not self.observation_features["target_inventory"]:
+            observation[5] = 0.0
+        return observation
+
+    def _raw_observation(self) -> np.ndarray:
+        """Builds an unmasked normalized observation."""
         step_index = min(self.current_step, self.episode_length - 1)
         price = float(self.current_path[step_index])
         current_date = self._current_date(step_index)
@@ -262,3 +290,21 @@ class GasStorageEnv(gym.Env):
 def _is_leap_year(year: int) -> bool:
     """Returns whether a Gregorian calendar year is a leap year."""
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+def _validate_observation_features(
+    observation_features: dict[str, bool] | None,
+) -> dict[str, bool]:
+    """Returns a complete validated observation feature mask."""
+    features = dict(DEFAULT_OBSERVATION_FEATURES)
+    if observation_features is None:
+        return features
+    unknown = sorted(set(observation_features) - set(features))
+    if unknown:
+        raise ValueError(
+            "Unknown observation_features: " + ", ".join(unknown)
+        )
+    features.update(
+        {key: bool(value) for key, value in observation_features.items()}
+    )
+    return features
