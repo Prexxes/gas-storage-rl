@@ -257,9 +257,9 @@ def _suggest_policy_kwargs(
         ["small", "medium", "large"],
     )
     net_arch_by_name = {
-        "small": [64, 64],
-        "medium": [128, 128],
-        "large": [256, 256],
+        "small": [128, 128],
+        "medium": [256, 256],
+        "large": [512, 512],
     }
     policy_kwargs: dict[str, Any] = {
         "net_arch": net_arch_by_name[net_arch_name],
