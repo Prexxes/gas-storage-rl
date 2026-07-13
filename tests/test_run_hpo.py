@@ -71,6 +71,16 @@ def _base_config(tmp_path: Path) -> dict:
     }
 
 
+def _write_evaluations_csv(run_dir: Path, rows: list[dict]) -> None:
+    """Writes minimal validation rows for HPO objective tests."""
+    run_dir.mkdir(parents=True, exist_ok=True)
+    fieldnames = list(rows[0])
+    with (run_dir / "evaluations.csv").open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
     monkeypatch,
     tmp_path: Path,
@@ -135,6 +145,91 @@ def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
     assert [row["seed_index"] for row in seed_rows] == ["0", "1", "2"]
     assert {row["dataset_seed"] for row in seed_rows} == {"11"}
     assert {row["effective_reward_scale"] for row in seed_rows} == {"0.5"}
+    assert {row["hpo_objective_selection"] for row in seed_rows} == {
+        "final_mean_return_raw"
+    }
+
+
+def test_run_trial_uses_best_validation_row_for_hpo_objective(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """HPO selects max validation mean return instead of the final return."""
+    config = _base_config(tmp_path)
+    study_dir = tmp_path / "runs" / "hpo" / "study"
+    study_dir.mkdir(parents=True)
+    run_dir = tmp_path / "run-0"
+
+    def fake_run_experiment(config, algorithm, **kwargs):
+        del config, algorithm, kwargs
+        _write_evaluations_csv(
+            run_dir,
+            [
+                {
+                    "total_training_env_steps": 0,
+                    "mean_return_raw": 10.0,
+                    "std_return_raw": 2.0,
+                    "median_return_raw": 9.0,
+                    "min_return_raw": 8.0,
+                    "mean_terminal_deviation": 0.6,
+                    "mean_number_of_constrained_actions": 3.0,
+                },
+                {
+                    "total_training_env_steps": 8,
+                    "mean_return_raw": 15.0,
+                    "std_return_raw": 1.5,
+                    "median_return_raw": 14.0,
+                    "min_return_raw": 13.0,
+                    "mean_terminal_deviation": 0.4,
+                    "mean_number_of_constrained_actions": 2.0,
+                },
+                {
+                    "total_training_env_steps": 16,
+                    "mean_return_raw": 12.0,
+                    "std_return_raw": 1.0,
+                    "median_return_raw": 11.0,
+                    "min_return_raw": 10.0,
+                    "mean_terminal_deviation": 0.5,
+                    "mean_number_of_constrained_actions": 1.0,
+                },
+            ],
+        )
+        return {
+            "status": "completed",
+            "run_dir": str(run_dir),
+            "validation": {
+                "mean_return_raw": 12.0,
+                "std_return_raw": 1.0,
+                "median_return_raw": 11.0,
+                "min_return_raw": 10.0,
+                "mean_terminal_deviation": 0.5,
+                "mean_number_of_constrained_actions": 1.0,
+            },
+        }
+
+    monkeypatch.setattr(run_hpo, "run_experiment", fake_run_experiment)
+
+    objective = run_hpo._run_trial(
+        FixedTrial(),
+        config,
+        "ppo",
+        "study",
+        [0],
+        500_000,
+        False,
+        study_dir,
+    )
+
+    assert objective == 15.0
+    run_hpo._export_trial_csvs(study_dir)
+    seed_rows = list(
+        csv.DictReader((study_dir / "trial_seed_runs.csv").open(encoding="utf-8"))
+    )
+    assert seed_rows[0]["hpo_objective_selection"] == "max_mean_return_raw"
+    assert seed_rows[0]["hpo_objective_training_env_steps"] == "8.0"
+    assert seed_rows[0]["hpo_objective_mean_validation_return_raw"] == "15.0"
+    assert seed_rows[0]["mean_validation_return_raw"] == "15.0"
+    assert seed_rows[0]["final_mean_validation_return_raw"] == "12.0"
 
 
 def test_run_trial_fails_when_one_seed_run_fails(

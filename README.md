@@ -176,8 +176,9 @@ one algorithm-specific hyperparameter configuration on the train split for seed
 indices `0`, `1`, and `2`, and also tunes a shared `reward_scale_multiplier`
 from `[0.25, 0.5, 1.0, 2.0, 4.0]`. The effective environment `reward_scale` is
 the base config value multiplied by that trial value. HPO selects by the mean
-final validation return after the fixed training budget. The test split is not
-used by the HPO runner.
+across tuning seeds of the maximum validation `mean_return_raw` observed during
+training, matching the `best_validation_model` checkpoint rule. The test split is
+not used by the HPO runner.
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \
@@ -199,14 +200,16 @@ runs/hpo/<study_id>/
   metadata.json
   trials.csv
   trial_seed_runs.csv
+  trial_XXXX.json
   best_trial.json
   best_config.json
 ```
 
 Trials are valid only when all three tuning-seed runs finish successfully. The
-Optuna objective is `mean_validation_return_raw` averaged across the tuning
-seeds; trial exports also store the across-seed standard deviation, median, and
-minimum validation return. Passing `--n-jobs N` runs up to `N` Optuna trials in
+Optuna objective is the best validation `mean_return_raw` from each seed run,
+averaged across the tuning seeds; trial exports also store the across-seed
+standard deviation, median, minimum validation return, selected validation step,
+and final validation return. Passing `--n-jobs N` runs up to `N` Optuna trials in
 parallel; each trial writes its own `trial_XXXX.json`, and aggregate CSV exports
 are rebuilt from those trial artifacts after optimization finishes. Phase 2 final
 runs are started manually from

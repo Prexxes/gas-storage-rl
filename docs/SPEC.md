@@ -191,11 +191,20 @@ not tuned.
 Each HPO trial trains the suggested hyperparameter configuration on the train
 split for seed indices `0`, `1`, and `2`. The `dataset_seed` remains constant;
 `env_seed` and `agent_seed` are deterministically derived from `master_seed` and
-the seed index. The trial objective is the mean final
-`mean_validation_return_raw` across the three seed runs after exactly the fixed
-training budget, for example `500_000` timesteps. A trial is valid only if all
-three seed runs complete successfully. Trial exports additionally store
-across-seed standard deviation, median, and minimum validation return.
+the seed index. Each seed run contributes the maximum validation
+`mean_return_raw` observed in `evaluations.csv`, matching the
+`best_validation_model` checkpoint selection rule. The trial objective is the
+mean of those selected validation returns across the three seed runs after a
+fixed training budget, for example `500_000` timesteps. A trial is valid only if
+all three seed runs complete successfully. Trial exports additionally store
+across-seed standard deviation, median, minimum validation return, the selected
+validation step, and the final validation return.
+
+Passing `--n-jobs N` runs up to `N` Optuna trials in parallel against local
+SQLite storage with an extended lock timeout. During optimization, each trial
+writes its own `trial_XXXX.json`; aggregate `trials.csv` and
+`trial_seed_runs.csv` exports are rebuilt from those trial artifacts after
+optimization finishes.
 
 HPO never evaluates the test split. Phase 2 final runs are started manually from
 the saved `best_config.json` with disjoint seed indices, for example `100..107`,

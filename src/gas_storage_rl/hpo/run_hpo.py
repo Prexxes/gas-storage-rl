@@ -23,6 +23,8 @@ from gas_storage_rl.training.run_experiment import run_experiment
 DEFAULT_HPO_SEED_INDICES = [0, 1, 2]
 DEFAULT_N_TRIALS = 32
 DEFAULT_TOTAL_TIMESTEPS = 500_000
+HPO_OBJECTIVE = "mean_across_seeds_of_max_validation_mean_return_raw"
+HPO_OBJECTIVE_SELECTION = "max_mean_return_raw"
 
 
 def run_hpo(
@@ -69,7 +71,7 @@ def run_hpo(
             "n_jobs": n_jobs,
             "seed_indices": seed_indices,
             "total_timesteps": total_timesteps,
-            "objective": "mean_validation_return_raw",
+            "objective": HPO_OBJECTIVE,
             "start_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
         },
     )
@@ -172,7 +174,7 @@ def _run_trial(
             status = "failed"
             error_message = row["error"]
             break
-        validation_values.append(float(row["mean_validation_return_raw"]))
+        validation_values.append(float(row["hpo_objective_mean_validation_return_raw"]))
 
     if len(validation_values) != len(seed_indices):
         trial_row = _trial_row(
@@ -297,6 +299,10 @@ def _run_trial_seed(
         "clipped_action_count": "",
         "total_timesteps": int(total_timesteps),
         "runtime_s": "",
+        "hpo_objective_selection": "",
+        "hpo_objective_training_env_steps": "",
+        "hpo_objective_mean_validation_return_raw": "",
+        "final_mean_validation_return_raw": "",
         "status": "running",
         "error": "",
     }
@@ -308,10 +314,22 @@ def _run_trial_seed(
             experiment_group_id=f"{study_id}-trial-{trial_id:04d}",
             rerun=rerun,
         )
-        metrics = summary["validation"]
+        final_metrics = summary["validation"]
+        metrics = _select_hpo_objective_metrics(summary)
         row.update(
             {
                 "run_dir": summary["run_dir"],
+                "hpo_objective_selection": metrics["hpo_objective_selection"],
+                "hpo_objective_training_env_steps": metrics.get(
+                    "total_training_env_steps",
+                    "",
+                ),
+                "hpo_objective_mean_validation_return_raw": float(
+                    metrics["mean_return_raw"]
+                ),
+                "final_mean_validation_return_raw": float(
+                    final_metrics["mean_return_raw"]
+                ),
                 "mean_validation_return_raw": float(metrics["mean_return_raw"]),
                 "std_validation_return_raw": float(metrics["std_return_raw"]),
                 "median_validation_return_raw": float(metrics["median_return_raw"]),
@@ -329,6 +347,43 @@ def _run_trial_seed(
         row["status"] = "failed"
         row["error"] = f"{type(error).__name__}: {error}"
     return row
+
+
+def _select_hpo_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
+    """Returns the validation row used for HPO objective selection."""
+    rows = _read_evaluation_rows(Path(summary["run_dir"]))
+    if not rows:
+        metrics = dict(summary["validation"])
+        metrics["hpo_objective_selection"] = "final_mean_return_raw"
+        return metrics
+
+    best_row = max(rows, key=lambda row: float(row["mean_return_raw"]))
+    metrics = _coerce_evaluation_row(best_row)
+    metrics["hpo_objective_selection"] = HPO_OBJECTIVE_SELECTION
+    return metrics
+
+
+def _read_evaluation_rows(run_dir: Path) -> list[dict[str, str]]:
+    """Reads validation rows for one training run."""
+    path = run_dir / "evaluations.csv"
+    if not path.exists():
+        return []
+    with path.open("r", newline="", encoding="utf-8") as file:
+        return list(csv.DictReader(file))
+
+
+def _coerce_evaluation_row(row: dict[str, str]) -> dict[str, Any]:
+    """Converts numeric CSV evaluation values to floats."""
+    output: dict[str, Any] = {}
+    for key, value in row.items():
+        if value == "":
+            output[key] = value
+            continue
+        try:
+            output[key] = float(value)
+        except ValueError:
+            output[key] = value
+    return output
 
 
 def _trial_row(
@@ -457,7 +512,7 @@ def _hpo_config(
         "n_jobs": n_jobs,
         "tuning_seed_indices": seed_indices,
         "total_timesteps": total_timesteps,
-        "objective": "mean_validation_return_raw",
+        "objective": HPO_OBJECTIVE,
         "direction": "maximize",
         "phase": "phase_1_hyperparameter_tuning",
         "train_split": "train",
