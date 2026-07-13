@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+REWARD_SCALE_MULTIPLIERS = [0.25, 0.5, 1.0, 2.0, 4.0]
+
 
 def suggest_hyperparameters(trial: Any, algorithm: str) -> dict[str, Any]:
     """Suggests JSON-serializable SB3 hyperparameters for one algorithm.
@@ -22,6 +24,16 @@ def suggest_hyperparameters(trial: Any, algorithm: str) -> dict[str, Any]:
     if algorithm == "td3":
         return suggest_td3_hyperparameters(trial)
     raise ValueError(f"Unsupported algorithm: {algorithm}")
+
+
+def suggest_reward_scale_multiplier(trial: Any) -> float:
+    """Suggests the shared reward-scale multiplier for one HPO trial."""
+    return float(
+        trial.suggest_categorical(
+            "reward_scale_multiplier",
+            REWARD_SCALE_MULTIPLIERS,
+        )
+    )
 
 
 def suggest_ppo_hyperparameters(trial: Any) -> dict[str, Any]:
@@ -166,6 +178,12 @@ def search_space_description() -> dict[str, Any]:
     return {
         "method": "Optuna TPE",
         "direction": "maximize",
+        "shared_tuned_parameters": {
+            "reward_scale_multiplier": (
+                "categorical [0.25, 0.5, 1.0, 2.0, 4.0]; effective "
+                "reward_scale = base reward_scale * multiplier"
+            ),
+        },
         "fixed_design_parameters": [
             "price_process_config",
             "dataset_config",

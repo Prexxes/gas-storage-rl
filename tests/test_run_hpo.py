@@ -33,6 +33,7 @@ def _base_config(tmp_path: Path) -> dict:
             "environment_name": "deterministic",
             "capacity": 30,
             "episode_length": 8,
+            "reward_scale": 2.0,
         },
         "dataset_config": {
             "n_train_paths": 8,
@@ -84,6 +85,7 @@ def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
         seed_index = kwargs["seed_index"]
         called_seed_indices.append(seed_index)
         assert config["training_config"]["total_timesteps"] == 500_000
+        assert config["environment_config"]["reward_scale"] == 0.5
         return {
             "status": "completed",
             "run_dir": str(tmp_path / f"run-{seed_index}"),
@@ -119,11 +121,15 @@ def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
     )
     assert trial_rows[0]["objective_mean_validation_return_raw"] == "11.0"
     assert trial_rows[0]["median_validation_return_raw_across_seeds"] == "11.0"
+    assert trial_rows[0]["reward_scale_multiplier"] == "0.25"
+    assert trial_rows[0]["base_reward_scale"] == "2.0"
+    assert trial_rows[0]["effective_reward_scale"] == "0.5"
     seed_rows = list(
         csv.DictReader((study_dir / "trial_seed_runs.csv").open(encoding="utf-8"))
     )
     assert [row["seed_index"] for row in seed_rows] == ["0", "1", "2"]
     assert {row["dataset_seed"] for row in seed_rows} == {"11"}
+    assert {row["effective_reward_scale"] for row in seed_rows} == {"0.5"}
 
 
 def test_run_trial_fails_when_one_seed_run_fails(
@@ -165,4 +171,3 @@ def test_validate_hpo_inputs_rejects_duplicate_seed_indices() -> None:
     """Seed indices must be disjoint within phase 1."""
     with pytest.raises(ValueError, match="seed_indices must be unique"):
         run_hpo._validate_hpo_inputs("ppo", 32, [0, 1, 1])
-

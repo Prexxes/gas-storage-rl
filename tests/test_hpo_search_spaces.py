@@ -5,6 +5,7 @@ from __future__ import annotations
 from gas_storage_rl.hpo.search_spaces import (
     search_space_description,
     suggest_hyperparameters,
+    suggest_reward_scale_multiplier,
 )
 
 
@@ -61,10 +62,18 @@ def test_td3_search_space_uses_json_safe_action_noise() -> None:
     assert params["action_noise"]["sigma"] > 0.0
 
 
+def test_reward_scale_multiplier_uses_shared_categorical_space() -> None:
+    """Reward scaling is tuned as a shared HPO parameter."""
+    multiplier = suggest_reward_scale_multiplier(DeterministicTrial())
+
+    assert multiplier == 0.25
+
+
 def test_search_space_description_documents_phase_one_design() -> None:
     """Search-space metadata documents the fixed design parameters."""
     description = search_space_description()
 
     assert description["method"] == "Optuna TPE"
     assert description["direction"] == "maximize"
+    assert "reward_scale_multiplier" in description["shared_tuned_parameters"]
     assert "dataset_config" in description["fixed_design_parameters"]

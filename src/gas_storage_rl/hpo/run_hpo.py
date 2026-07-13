@@ -14,6 +14,7 @@ from typing import Any
 from gas_storage_rl.hpo.search_spaces import (
     search_space_description,
     suggest_hyperparameters,
+    suggest_reward_scale_multiplier,
 )
 from gas_storage_rl.training.config import load_config, seeds_for_run
 from gas_storage_rl.training.run_experiment import run_experiment
@@ -101,6 +102,7 @@ def run_hpo(
         _FixedTrial(study.best_trial.params),
         algorithm,
     )
+    best_reward_scale_info = _reward_scale_info(config, study.best_trial.params)
     _write_json(study_dir / "best_config.json", best_config)
     _write_json(
         study_dir / "best_trial.json",
@@ -108,6 +110,13 @@ def run_hpo(
             "trial_id": int(study.best_trial.number),
             "objective_mean_validation_return_raw": float(study.best_value),
             "hyperparameters": best_config["agent_config"][algorithm],
+            "reward_scale_multiplier": best_reward_scale_info[
+                "reward_scale_multiplier"
+            ],
+            "base_reward_scale": best_reward_scale_info["base_reward_scale"],
+            "effective_reward_scale": best_reward_scale_info[
+                "effective_reward_scale"
+            ],
             "params": dict(study.best_trial.params),
         },
     )
@@ -138,6 +147,11 @@ def _run_trial(
 ) -> float:
     """Runs all seed repetitions for one Optuna trial."""
     started = time.time()
+    reward_scale_multiplier = suggest_reward_scale_multiplier(trial)
+    reward_scale_info = _reward_scale_info(
+        config,
+        {"reward_scale_multiplier": reward_scale_multiplier},
+    )
     hyperparameters = suggest_hyperparameters(trial, algorithm)
     validation_values = []
     seed_rows_for_trial = []
@@ -151,6 +165,7 @@ def _run_trial(
             int(trial.number),
             seed_index,
             hyperparameters,
+            reward_scale_multiplier,
             total_timesteps,
             rerun,
         )
@@ -169,6 +184,7 @@ def _run_trial(
             int(trial.number),
             status,
             hyperparameters,
+            reward_scale_info,
             total_timesteps,
             time.time() - started,
             [],
@@ -187,6 +203,7 @@ def _run_trial(
         int(trial.number),
         status,
         hyperparameters,
+        reward_scale_info,
         total_timesteps,
         time.time() - started,
         validation_values,
@@ -199,6 +216,9 @@ def _run_trial(
         "algorithm": algorithm,
         "status": status,
         "hyperparameters": hyperparameters,
+        "reward_scale_multiplier": reward_scale_info["reward_scale_multiplier"],
+        "base_reward_scale": reward_scale_info["base_reward_scale"],
+        "effective_reward_scale": reward_scale_info["effective_reward_scale"],
         "seed_runs": seed_rows_for_trial,
         "objective_mean_validation_return_raw": objective,
     })
@@ -212,6 +232,7 @@ def _run_trial_seed(
     trial_id: int,
     seed_index: int,
     hyperparameters: dict[str, Any],
+    reward_scale_multiplier: float,
     total_timesteps: int,
     rerun: bool,
 ) -> dict[str, Any]:
@@ -219,6 +240,10 @@ def _run_trial_seed(
     run_config = copy.deepcopy(config)
     run_config["training_config"]["total_timesteps"] = int(total_timesteps)
     run_config["agent_config"][algorithm] = copy.deepcopy(hyperparameters)
+    reward_scale_info = _apply_reward_scale_multiplier(
+        run_config,
+        reward_scale_multiplier,
+    )
     run_config["seeds"] = seeds_for_run(config["seeds"], seed_index)
     started = time.time()
     row = {
@@ -230,6 +255,9 @@ def _run_trial_seed(
         "env_seed": int(run_config["seeds"]["env_seed"]),
         "agent_seed": int(run_config["seeds"]["agent_seed"]),
         "eval_seed": int(run_config["seeds"]["eval_seed"]),
+        "reward_scale_multiplier": reward_scale_info["reward_scale_multiplier"],
+        "base_reward_scale": reward_scale_info["base_reward_scale"],
+        "effective_reward_scale": reward_scale_info["effective_reward_scale"],
         "run_dir": "",
         "mean_validation_return_raw": "",
         "std_validation_return_raw": "",
@@ -278,6 +306,7 @@ def _trial_row(
     trial_id: int,
     status: str,
     hyperparameters: dict[str, Any],
+    reward_scale_info: dict[str, float],
     total_timesteps: int,
     runtime_s: float,
     validation_values: list[float],
@@ -294,6 +323,9 @@ def _trial_row(
         "min_validation_return_raw_across_seeds": "",
         "total_timesteps": int(total_timesteps),
         "runtime_s": float(runtime_s),
+        "reward_scale_multiplier": reward_scale_info["reward_scale_multiplier"],
+        "base_reward_scale": reward_scale_info["base_reward_scale"],
+        "effective_reward_scale": reward_scale_info["effective_reward_scale"],
         "hyperparameters_json": json.dumps(hyperparameters, sort_keys=True),
         "error": error_message,
     }
@@ -324,11 +356,55 @@ def _best_config(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     """Returns a config copy with fixed total timesteps and algorithm marker."""
-    del params
     output = copy.deepcopy(config)
     output["training_config"]["total_timesteps"] = int(total_timesteps)
     output["agent_config"]["algorithm_name"] = algorithm
+    _apply_reward_scale_multiplier(
+        output,
+        float(params["reward_scale_multiplier"]),
+    )
     return output
+
+
+def _base_reward_scale(config: dict[str, Any]) -> float:
+    """Returns the base reward scale using the environment defaulting rules."""
+    environment_config = config.get("environment_config", {})
+    price_config = config.get("price_process_config", {})
+    return float(
+        environment_config.get(
+            "reward_scale",
+            price_config.get("base_price", 50.0),
+        )
+    )
+
+
+def _reward_scale_info(
+    config: dict[str, Any],
+    params: dict[str, Any],
+) -> dict[str, float]:
+    """Returns base, multiplier, and effective reward-scale values."""
+    multiplier = float(params["reward_scale_multiplier"])
+    base_reward_scale = _base_reward_scale(config)
+    return {
+        "reward_scale_multiplier": multiplier,
+        "base_reward_scale": base_reward_scale,
+        "effective_reward_scale": base_reward_scale * multiplier,
+    }
+
+
+def _apply_reward_scale_multiplier(
+    config: dict[str, Any],
+    reward_scale_multiplier: float,
+) -> dict[str, float]:
+    """Applies the reward-scale multiplier to a config copy."""
+    reward_scale_info = _reward_scale_info(
+        config,
+        {"reward_scale_multiplier": reward_scale_multiplier},
+    )
+    config.setdefault("environment_config", {})["reward_scale"] = reward_scale_info[
+        "effective_reward_scale"
+    ]
+    return reward_scale_info
 
 
 def _hpo_config(

@@ -173,9 +173,11 @@ runs/experiment_groups/<group_id>/
 
 Phase 1 hyperparameter tuning uses Optuna with the TPE sampler. Each trial trains
 one algorithm-specific hyperparameter configuration on the train split for seed
-indices `0`, `1`, and `2`, then selects hyperparameters by the mean final
-validation return after the fixed training budget. The test split is not used by
-the HPO runner.
+indices `0`, `1`, and `2`, and also tunes a shared `reward_scale_multiplier`
+from `[0.25, 0.5, 1.0, 2.0, 4.0]`. The effective environment `reward_scale` is
+the base config value multiplied by that trial value. HPO selects by the mean
+final validation return after the fixed training budget. The test split is not
+used by the HPO runner.
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \

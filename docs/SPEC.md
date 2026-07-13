@@ -178,8 +178,11 @@ Periodic validation runs after `total_training_env_steps` reaches each configure
 
 Phase 1 hyperparameter tuning is implemented by `gas_storage_rl.hpo.run_hpo`.
 It uses Optuna TPE with local SQLite storage at
-`runs/hpo/<study_id>/optuna_study.db`. HPO optimizes only algorithm-specific
-Stable-Baselines3 hyperparameters for PPO, SAC, or TD3. Price-process settings,
+`runs/hpo/<study_id>/optuna_study.db`. HPO optimizes algorithm-specific
+Stable-Baselines3 hyperparameters for PPO, SAC, or TD3 and a shared
+`reward_scale_multiplier` sampled from `[0.25, 0.5, 1.0, 2.0, 4.0]`. The
+effective environment `reward_scale` for a trial is the base config
+`reward_scale` multiplied by that value. Price-process settings,
 train/validation/test split sizes, reward definition, storage restrictions,
 capacity, terminal target, benchmark definitions, evaluation metrics, seed
 counts, and the fixed training budget are treated as experimental design and are
