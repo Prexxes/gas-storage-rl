@@ -65,7 +65,7 @@ observation_ablation_config:
       target_inventory: true
 
 training_config:
-  total_timesteps: 100000
+  total_timesteps: 200000
   eval_freq: 2500
   n_seeds: 3
 
@@ -99,7 +99,7 @@ agent_config:
     batch_size: 256
     train_freq: 1
     gradient_steps: 1
-    device: cpu
+    device: cuda
     verbose: 0
   td3:
     policy: MlpPolicy
@@ -110,5 +110,5 @@ agent_config:
     batch_size: 256
     train_freq: 1
     gradient_steps: 1
-    device: cpu
+    device: cuda
     verbose: 0
