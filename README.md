@@ -169,6 +169,62 @@ runs/experiment_groups/<group_id>/
   runs.csv
 ```
 
+## Hyperparameter Tuning
+
+Phase 1 hyperparameter tuning uses Optuna with the TPE sampler. Each trial trains
+one algorithm-specific hyperparameter configuration on the train split for seed
+indices `0`, `1`, and `2`, and also tunes a shared `reward_scale_multiplier`
+from `[0.25, 0.5, 1.0, 2.0, 4.0]`. The effective environment `reward_scale` is
+the base config value multiplied by that trial value. HPO selects by the mean
+across tuning seeds of the maximum validation `mean_return_raw` observed during
+training, matching the `best_validation_model` checkpoint rule. The test split is
+not used by the HPO runner.
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \
+  --config configs/ou_c30.yaml \
+  --algorithm ppo \
+  --n-trials 32 \
+  --n-jobs 1 \
+  --seed-indices 0 1 2 \
+  --total-timesteps 500000
+```
+
+HPO output is stored under:
+
+```text
+runs/hpo/<study_id>/
+  optuna_study.db
+  study_config.json
+  search_space.json
+  metadata.json
+  trials.csv
+  trial_seed_runs.csv
+  trial_XXXX.json
+  best_trial.json
+  best_config.json
+```
+
+Trials are valid only when all three tuning-seed runs finish successfully. The
+Optuna objective is the best validation `mean_return_raw` from each seed run,
+averaged across the tuning seeds; trial exports also store the across-seed
+standard deviation, median, minimum validation return, selected validation step,
+and final validation return. Passing `--n-jobs N` runs up to `N` Optuna trials in
+parallel; each trial writes its own `trial_XXXX.json`, and aggregate CSV exports
+are rebuilt from those trial artifacts after optimization finishes. Phase 2 final
+runs are started manually from
+`best_config.json` with disjoint seed indices:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
+  --config runs/hpo/<study_id>/best_config.json \
+  --algorithm ppo \
+  --seed-indices 100 101 102 103 104 105 106 107
+```
+
+Those final runs use the validation split for learning curves/AULC and the test
+split for final holdout performance.
+
 Each seed still produces a complete normal RL run under `runs/<run_id>/`. If one seed
 matches an already completed run and `--rerun` is not set, it is recorded as
 `skipped` in `runs.csv`. If one seed fails, the failure is recorded in `runs.csv`

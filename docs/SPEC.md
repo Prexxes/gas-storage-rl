@@ -174,6 +174,44 @@ Training logs contain one row per completed training episode in `metrics.csv`. S
 
 Periodic validation runs after `total_training_env_steps` reaches each configured `eval_freq` interval. After the final policy update, one additional validation row is appended to `evaluations.csv`, even when `total_timesteps` is exactly divisible by `eval_freq`. The best validation model is saved separately from the final model. A risk-adjusted validation model is also saved by maximizing `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`, where `risk_adjusted_std_penalty` defaults to `0.5`. Test and historical backtest evaluation are not part of the training command. They are run manually after model and hyperparameter selection with `gas_storage_rl.evaluation.run_holdout_evaluation`, so holdout results do not influence training-time decisions.
 
+## Hyperparameter Tuning
+
+Phase 1 hyperparameter tuning is implemented by `gas_storage_rl.hpo.run_hpo`.
+It uses Optuna TPE with local SQLite storage at
+`runs/hpo/<study_id>/optuna_study.db`. HPO optimizes algorithm-specific
+Stable-Baselines3 hyperparameters for PPO, SAC, or TD3 and a shared
+`reward_scale_multiplier` sampled from `[0.25, 0.5, 1.0, 2.0, 4.0]`. The
+effective environment `reward_scale` for a trial is the base config
+`reward_scale` multiplied by that value. Price-process settings,
+train/validation/test split sizes, reward definition, storage restrictions,
+capacity, terminal target, benchmark definitions, evaluation metrics, seed
+counts, and the fixed training budget are treated as experimental design and are
+not tuned.
+
+Each HPO trial trains the suggested hyperparameter configuration on the train
+split for seed indices `0`, `1`, and `2`. The `dataset_seed` remains constant;
+`env_seed` and `agent_seed` are deterministically derived from `master_seed` and
+the seed index. Each seed run contributes the maximum validation
+`mean_return_raw` observed in `evaluations.csv`, matching the
+`best_validation_model` checkpoint selection rule. The trial objective is the
+mean of those selected validation returns across the three seed runs after a
+fixed training budget, for example `500_000` timesteps. A trial is valid only if
+all three seed runs complete successfully. Trial exports additionally store
+across-seed standard deviation, median, minimum validation return, the selected
+validation step, and the final validation return.
+
+Passing `--n-jobs N` runs up to `N` Optuna trials in parallel against local
+SQLite storage with an extended lock timeout. During optimization, each trial
+writes its own `trial_XXXX.json`; aggregate `trials.csv` and
+`trial_seed_runs.csv` exports are rebuilt from those trial artifacts after
+optimization finishes.
+
+HPO never evaluates the test split. Phase 2 final runs are started manually from
+the saved `best_config.json` with disjoint seed indices, for example `100..107`,
+using `gas_storage_rl.training.run_experiment_group --seed-indices`. Those final
+runs train on the train split, use validation for learning curves and AULC, and
+evaluate the test split only as the final holdout performance.
+
 ## AULC
 
 Sample efficiency is measured with area under the validation learning curve:

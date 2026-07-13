@@ -7,5 +7,6 @@ stable-baselines3[extra]>=2.4
 torch>=2.2
 PyYAML>=6.0
 tqdm>=4.66
+optuna>=3.6
 pytest>=8.0
 ruff>=0.6
