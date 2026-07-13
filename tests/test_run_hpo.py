@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 
 import pytest
@@ -109,13 +110,17 @@ def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
         [0, 1, 2],
         500_000,
         False,
-        [],
-        [],
         study_dir,
     )
 
     assert objective == 11.0
     assert called_seed_indices == [0, 1, 2]
+    trial_payload = json.loads(
+        (study_dir / "trial_0007.json").read_text(encoding="utf-8")
+    )
+    assert trial_payload["objective_mean_validation_return_raw"] == 11.0
+    assert len(trial_payload["seed_runs"]) == 3
+    run_hpo._export_trial_csvs(study_dir)
     trial_rows = list(
         csv.DictReader((study_dir / "trials.csv").open(encoding="utf-8"))
     )
@@ -156,11 +161,10 @@ def test_run_trial_fails_when_one_seed_run_fails(
             [0, 1, 2],
             500_000,
             False,
-            [],
-            [],
             study_dir,
         )
 
+    run_hpo._export_trial_csvs(study_dir)
     trial_rows = list(
         csv.DictReader((study_dir / "trials.csv").open(encoding="utf-8"))
     )
@@ -171,3 +175,9 @@ def test_validate_hpo_inputs_rejects_duplicate_seed_indices() -> None:
     """Seed indices must be disjoint within phase 1."""
     with pytest.raises(ValueError, match="seed_indices must be unique"):
         run_hpo._validate_hpo_inputs("ppo", 32, [0, 1, 1])
+
+
+def test_validate_hpo_inputs_rejects_nonpositive_n_jobs() -> None:
+    """Trial-level parallelism requires a positive worker count."""
+    with pytest.raises(ValueError, match="n_jobs must be positive"):
+        run_hpo._validate_hpo_inputs("ppo", 32, [0, 1, 2], 0)

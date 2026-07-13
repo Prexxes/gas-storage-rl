@@ -184,6 +184,7 @@ PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \
   --config configs/ou_c30.yaml \
   --algorithm ppo \
   --n-trials 32 \
+  --n-jobs 1 \
   --seed-indices 0 1 2 \
   --total-timesteps 500000
 ```
@@ -205,7 +206,10 @@ runs/hpo/<study_id>/
 Trials are valid only when all three tuning-seed runs finish successfully. The
 Optuna objective is `mean_validation_return_raw` averaged across the tuning
 seeds; trial exports also store the across-seed standard deviation, median, and
-minimum validation return. Phase 2 final runs are started manually from
+minimum validation return. Passing `--n-jobs N` runs up to `N` Optuna trials in
+parallel; each trial writes its own `trial_XXXX.json`, and aggregate CSV exports
+are rebuilt from those trial artifacts after optimization finishes. Phase 2 final
+runs are started manually from
 `best_config.json` with disjoint seed indices:
 
 ```bash

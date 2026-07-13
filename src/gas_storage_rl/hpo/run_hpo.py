@@ -7,6 +7,7 @@ import copy
 import csv
 import json
 import statistics
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -34,14 +35,15 @@ def run_hpo(
     total_timesteps: int = DEFAULT_TOTAL_TIMESTEPS,
     study_name: str | None = None,
     rerun: bool = False,
+    n_jobs: int = 1,
 ) -> dict[str, Any]:
     """Runs phase-1 HPO using Optuna TPE and returns a study summary."""
     import optuna
 
     seed_indices = list(DEFAULT_HPO_SEED_INDICES if seed_indices is None else seed_indices)
-    _validate_hpo_inputs(algorithm, n_trials, seed_indices)
+    _validate_hpo_inputs(algorithm, n_trials, seed_indices, n_jobs)
     study_dir, study_id = _create_study_dir(config, config_name, algorithm, study_name)
-    storage_url = f"sqlite:///{study_dir / 'optuna_study.db'}"
+    storage_url = f"sqlite:///{study_dir / 'optuna_study.db'}?timeout=60"
     hpo_config = _hpo_config(
         config,
         config_name,
@@ -50,6 +52,7 @@ def run_hpo(
         seed_indices,
         n_trials,
         total_timesteps,
+        n_jobs,
     )
     _write_json(study_dir / "study_config.json", hpo_config)
     _write_json(study_dir / "search_space.json", search_space_description())
@@ -63,6 +66,7 @@ def run_hpo(
             "storage": storage_url,
             "direction": "maximize",
             "n_trials": n_trials,
+            "n_jobs": n_jobs,
             "seed_indices": seed_indices,
             "total_timesteps": total_timesteps,
             "objective": "mean_validation_return_raw",
@@ -79,9 +83,6 @@ def run_hpo(
         load_if_exists=True,
     )
 
-    trial_rows: list[dict[str, Any]] = []
-    seed_run_rows: list[dict[str, Any]] = []
-
     def objective(trial: Any) -> float:
         return _run_trial(
             trial,
@@ -91,12 +92,11 @@ def run_hpo(
             seed_indices,
             total_timesteps,
             rerun,
-            trial_rows,
-            seed_run_rows,
             study_dir,
         )
 
-    study.optimize(objective, n_trials=n_trials, catch=(RuntimeError,))
+    study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, catch=(RuntimeError,))
+    _export_trial_csvs(study_dir)
     best_config = _best_config(config, algorithm, total_timesteps, study.best_params)
     best_config["agent_config"][algorithm] = suggest_hyperparameters(
         _FixedTrial(study.best_trial.params),
@@ -141,8 +141,6 @@ def _run_trial(
     seed_indices: list[int],
     total_timesteps: int,
     rerun: bool,
-    trial_rows: list[dict[str, Any]],
-    seed_run_rows: list[dict[str, Any]],
     study_dir: Path,
 ) -> float:
     """Runs all seed repetitions for one Optuna trial."""
@@ -169,9 +167,7 @@ def _run_trial(
             total_timesteps,
             rerun,
         )
-        seed_run_rows.append(row)
         seed_rows_for_trial.append(row)
-        _write_csv(study_dir / "trial_seed_runs.csv", seed_run_rows)
         if row["status"] != "completed" and row["status"] != "skipped":
             status = "failed"
             error_message = row["error"]
@@ -190,8 +186,17 @@ def _run_trial(
             [],
             error_message,
         )
-        trial_rows.append(trial_row)
-        _write_csv(study_dir / "trials.csv", trial_rows)
+        _write_trial_payload(
+            study_dir,
+            int(trial.number),
+            algorithm,
+            status,
+            hyperparameters,
+            reward_scale_info,
+            seed_rows_for_trial,
+            trial_row,
+            None,
+        )
         raise RuntimeError(
             f"Trial {trial.number} failed before all seed runs completed: "
             f"{error_message}"
@@ -209,10 +214,34 @@ def _run_trial(
         validation_values,
         error_message,
     )
-    trial_rows.append(trial_row)
-    _write_csv(study_dir / "trials.csv", trial_rows)
-    _write_json(study_dir / f"trial_{int(trial.number):04d}.json", {
-        "trial_id": int(trial.number),
+    _write_trial_payload(
+        study_dir,
+        int(trial.number),
+        algorithm,
+        status,
+        hyperparameters,
+        reward_scale_info,
+        seed_rows_for_trial,
+        trial_row,
+        objective,
+    )
+    return objective
+
+
+def _write_trial_payload(
+    study_dir: Path,
+    trial_id: int,
+    algorithm: str,
+    status: str,
+    hyperparameters: dict[str, Any],
+    reward_scale_info: dict[str, float],
+    seed_rows_for_trial: list[dict[str, Any]],
+    trial_row: dict[str, Any],
+    objective: float | None,
+) -> None:
+    """Writes one trial-specific artifact for parallel-safe HPO exports."""
+    payload = {
+        "trial_id": trial_id,
         "algorithm": algorithm,
         "status": status,
         "hyperparameters": hyperparameters,
@@ -220,9 +249,10 @@ def _run_trial(
         "base_reward_scale": reward_scale_info["base_reward_scale"],
         "effective_reward_scale": reward_scale_info["effective_reward_scale"],
         "seed_runs": seed_rows_for_trial,
-        "objective_mean_validation_return_raw": objective,
-    })
-    return objective
+        "trial_row": trial_row,
+        "objective_mean_validation_return_raw": "" if objective is None else objective,
+    }
+    _write_json_atomic(study_dir / f"trial_{trial_id:04d}.json", payload)
 
 
 def _run_trial_seed(
@@ -415,6 +445,7 @@ def _hpo_config(
     seed_indices: list[int],
     n_trials: int,
     total_timesteps: int,
+    n_jobs: int,
 ) -> dict[str, Any]:
     """Returns the saved HPO configuration."""
     return {
@@ -423,6 +454,7 @@ def _hpo_config(
         "algorithm_name": algorithm,
         "hpo_method": "Optuna TPE",
         "n_trials": n_trials,
+        "n_jobs": n_jobs,
         "tuning_seed_indices": seed_indices,
         "total_timesteps": total_timesteps,
         "objective": "mean_validation_return_raw",
@@ -462,12 +494,15 @@ def _validate_hpo_inputs(
     algorithm: str,
     n_trials: int,
     seed_indices: list[int],
+    n_jobs: int = 1,
 ) -> None:
     """Validates HPO runner settings."""
     if algorithm not in {"ppo", "sac", "td3"}:
         raise ValueError(f"Unsupported algorithm: {algorithm}")
     if n_trials <= 0:
         raise ValueError("n_trials must be positive")
+    if n_jobs <= 0:
+        raise ValueError("n_jobs must be positive")
     if len(seed_indices) != len(set(seed_indices)):
         raise ValueError("seed_indices must be unique")
     if not seed_indices:
@@ -490,10 +525,45 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         json.dump(payload, file, indent=2, default=str)
 
 
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    """Writes one JSON document through a same-directory atomic replace."""
+    temp_path = path.with_name(
+        f".{path.name}.{threading.get_ident()}.{time.time_ns()}.tmp"
+    )
+    _write_json(temp_path, payload)
+    temp_path.replace(path)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     """Reads one JSON document."""
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def _trial_payload_paths(study_dir: Path) -> list[Path]:
+    """Returns completed per-trial payload paths in deterministic order."""
+    return sorted(study_dir.glob("trial_[0-9][0-9][0-9][0-9].json"))
+
+
+def _read_trial_payloads(study_dir: Path) -> list[dict[str, Any]]:
+    """Reads completed per-trial payloads in trial-id order."""
+    payloads = [_read_json(path) for path in _trial_payload_paths(study_dir)]
+    payloads.sort(key=lambda payload: int(payload["trial_id"]))
+    return payloads
+
+
+def _export_trial_csvs(study_dir: Path) -> None:
+    """Exports aggregate HPO CSVs from per-trial JSON artifacts."""
+    payloads = _read_trial_payloads(study_dir)
+    trial_rows = [payload["trial_row"] for payload in payloads]
+    seed_rows = [
+        row
+        for payload in payloads
+        for row in payload.get("seed_runs", [])
+    ]
+    seed_rows.sort(key=lambda row: (int(row["trial_id"]), int(row["seed_index"])))
+    _write_csv(study_dir / "trials.csv", trial_rows)
+    _write_csv(study_dir / "trial_seed_runs.csv", seed_rows)
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -544,6 +614,12 @@ def main() -> None:
     parser.add_argument("--algorithm", required=True, choices=["ppo", "sac", "td3"])
     parser.add_argument("--n-trials", type=int, default=DEFAULT_N_TRIALS)
     parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=1,
+        help="Number of Optuna trials to run in parallel.",
+    )
+    parser.add_argument(
         "--seed-indices",
         type=int,
         nargs="+",
@@ -568,6 +644,7 @@ def main() -> None:
         total_timesteps=args.total_timesteps,
         study_name=args.study_name,
         rerun=args.rerun,
+        n_jobs=args.n_jobs,
     )
     print(json.dumps(summary, indent=2))
 
