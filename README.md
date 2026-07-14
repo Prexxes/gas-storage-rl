@@ -190,6 +190,21 @@ PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \
   --total-timesteps 500000
 ```
 
+Interrupted HPO studies can be continued from the existing study directory. In
+resume mode, `--n-trials` is the target total number of finished Optuna trials,
+not the number of additional trials:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \
+  --config configs/ou_c30.yaml \
+  --algorithm ppo \
+  --n-trials 32 \
+  --n-jobs 2 \
+  --seed-indices 0 1 2 \
+  --total-timesteps 500000 \
+  --resume-study-dir runs/hpo/<study_id>
+```
+
 HPO output is stored under:
 
 ```text

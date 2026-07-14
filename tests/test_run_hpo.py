@@ -97,6 +97,8 @@ def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
         called_seed_indices.append(seed_index)
         assert config["training_config"]["total_timesteps"] == 500_000
         assert config["environment_config"]["reward_scale"] == 0.5
+        assert config["agent_config"]["ppo"]["device"] == "cpu"
+        assert config["agent_config"]["ppo"]["n_steps"] == 256
         return {
             "status": "completed",
             "run_dir": str(tmp_path / f"run-{seed_index}"),
@@ -266,10 +268,93 @@ def test_run_trial_fails_when_one_seed_run_fails(
     assert trial_rows[0]["status"] == "failed"
 
 
+def test_run_hpo_resumes_existing_study_to_target_trial_count(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Resume mode reuses an existing study and runs only missing trials."""
+    config = _base_config(tmp_path)
+    seen_trial_groups = []
+
+    def fake_run_experiment(config, algorithm, **kwargs):
+        del config, algorithm
+        seen_trial_groups.append(kwargs["experiment_group_id"])
+        return {
+            "status": "completed",
+            "run_dir": str(tmp_path / f"run-{len(seen_trial_groups)}"),
+            "validation": {
+                "mean_return_raw": float(len(seen_trial_groups)),
+                "std_return_raw": 0.0,
+                "median_return_raw": float(len(seen_trial_groups)),
+                "min_return_raw": float(len(seen_trial_groups)),
+                "mean_terminal_deviation": 0.0,
+                "mean_number_of_constrained_actions": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(run_hpo, "run_experiment", fake_run_experiment)
+
+    first_summary = run_hpo.run_hpo(
+        config,
+        "config",
+        "ppo",
+        n_trials=1,
+        seed_indices=[0],
+        total_timesteps=16,
+        study_name="resume-study",
+    )
+    second_summary = run_hpo.run_hpo(
+        config,
+        "config",
+        "ppo",
+        n_trials=3,
+        seed_indices=[0],
+        total_timesteps=16,
+        resume_study_dir=first_summary["study_dir"],
+    )
+
+    assert second_summary["study_dir"] == first_summary["study_dir"]
+    assert second_summary["n_existing_finished_trials"] == 1
+    assert second_summary["n_remaining_trials"] == 2
+    trial_rows = list(
+        csv.DictReader(
+            (Path(first_summary["study_dir"]) / "trials.csv").open(
+                encoding="utf-8",
+            )
+        )
+    )
+    assert len(trial_rows) == 3
+    metadata = json.loads(
+        (Path(first_summary["study_dir"]) / "metadata.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    assert metadata["is_resume"] is True
+    assert metadata["target_n_trials"] == 3
+
+
 def test_validate_hpo_inputs_rejects_duplicate_seed_indices() -> None:
     """Seed indices must be disjoint within phase 1."""
     with pytest.raises(ValueError, match="seed_indices must be unique"):
         run_hpo._validate_hpo_inputs("ppo", 32, [0, 1, 1])
+
+
+def test_agent_config_with_hyperparameters_preserves_base_runtime_settings(
+    tmp_path: Path,
+) -> None:
+    """HPO keeps non-tuned base settings such as the SB3 device."""
+    config = _base_config(tmp_path)
+
+    merged = run_hpo._agent_config_with_hyperparameters(
+        config,
+        "ppo",
+        {"learning_rate": 1e-4, "n_steps": 256},
+    )
+
+    assert merged["device"] == "cpu"
+    assert merged["policy"] == "MlpPolicy"
+    assert merged["learning_rate"] == 1e-4
+    assert merged["n_steps"] == 256
 
 
 def test_validate_hpo_inputs_rejects_nonpositive_n_jobs() -> None:

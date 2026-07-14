@@ -36,6 +36,7 @@ def run_hpo(
     seed_indices: list[int] | None = None,
     total_timesteps: int = DEFAULT_TOTAL_TIMESTEPS,
     study_name: str | None = None,
+    resume_study_dir: str | Path | None = None,
     rerun: bool = False,
     n_jobs: int = 1,
 ) -> dict[str, Any]:
@@ -44,7 +45,13 @@ def run_hpo(
 
     seed_indices = list(DEFAULT_HPO_SEED_INDICES if seed_indices is None else seed_indices)
     _validate_hpo_inputs(algorithm, n_trials, seed_indices, n_jobs)
-    study_dir, study_id = _create_study_dir(config, config_name, algorithm, study_name)
+    study_dir, study_id, is_resume = _study_dir(
+        config,
+        config_name,
+        algorithm,
+        study_name,
+        resume_study_dir,
+    )
     storage_url = f"sqlite:///{study_dir / 'optuna_study.db'}?timeout=60"
     hpo_config = _hpo_config(
         config,
@@ -58,23 +65,6 @@ def run_hpo(
     )
     _write_json(study_dir / "study_config.json", hpo_config)
     _write_json(study_dir / "search_space.json", search_space_description())
-    _write_json(
-        study_dir / "metadata.json",
-        {
-            "study_id": study_id,
-            "config_name": config_name,
-            "algorithm_name": algorithm,
-            "hpo_method": "Optuna TPE",
-            "storage": storage_url,
-            "direction": "maximize",
-            "n_trials": n_trials,
-            "n_jobs": n_jobs,
-            "seed_indices": seed_indices,
-            "total_timesteps": total_timesteps,
-            "objective": HPO_OBJECTIVE,
-            "start_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-    )
 
     sampler = optuna.samplers.TPESampler(seed=int(config["seeds"]["master_seed"]))
     study = optuna.create_study(
@@ -83,6 +73,29 @@ def run_hpo(
         sampler=sampler,
         storage=storage_url,
         load_if_exists=True,
+    )
+    finished_trials_before = _finished_trial_count(study)
+    remaining_trials = max(0, int(n_trials) - finished_trials_before)
+    _write_metadata(
+        study_dir,
+        {
+            "study_id": study_id,
+            "config_name": config_name,
+            "algorithm_name": algorithm,
+            "hpo_method": "Optuna TPE",
+            "storage": storage_url,
+            "direction": "maximize",
+            "n_trials": n_trials,
+            "target_n_trials": n_trials,
+            "n_existing_finished_trials": finished_trials_before,
+            "n_remaining_trials": remaining_trials,
+            "n_jobs": n_jobs,
+            "seed_indices": seed_indices,
+            "total_timesteps": total_timesteps,
+            "objective": HPO_OBJECTIVE,
+            "is_resume": is_resume,
+        },
+        is_resume,
     )
 
     def objective(trial: Any) -> float:
@@ -97,12 +110,23 @@ def run_hpo(
             study_dir,
         )
 
-    study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, catch=(RuntimeError,))
+    if remaining_trials > 0:
+        study.optimize(
+            objective,
+            n_trials=remaining_trials,
+            n_jobs=n_jobs,
+            catch=(RuntimeError,),
+        )
     _export_trial_csvs(study_dir)
     best_config = _best_config(config, algorithm, total_timesteps, study.best_params)
-    best_config["agent_config"][algorithm] = suggest_hyperparameters(
+    best_hyperparameters = suggest_hyperparameters(
         _FixedTrial(study.best_trial.params),
         algorithm,
+    )
+    best_config["agent_config"][algorithm] = _agent_config_with_hyperparameters(
+        config,
+        algorithm,
+        best_hyperparameters,
     )
     best_reward_scale_info = _reward_scale_info(config, study.best_trial.params)
     _write_json(study_dir / "best_config.json", best_config)
@@ -132,6 +156,9 @@ def run_hpo(
         "study_id": study_id,
         "best_trial_id": int(study.best_trial.number),
         "best_value": float(study.best_value),
+        "target_n_trials": int(n_trials),
+        "n_existing_finished_trials": finished_trials_before,
+        "n_remaining_trials": remaining_trials,
     }
 
 
@@ -271,7 +298,11 @@ def _run_trial_seed(
     """Runs one trial/seed training run and returns a flat result row."""
     run_config = copy.deepcopy(config)
     run_config["training_config"]["total_timesteps"] = int(total_timesteps)
-    run_config["agent_config"][algorithm] = copy.deepcopy(hyperparameters)
+    run_config["agent_config"][algorithm] = _agent_config_with_hyperparameters(
+        config,
+        algorithm,
+        hyperparameters,
+    )
     reward_scale_info = _apply_reward_scale_multiplier(
         run_config,
         reward_scale_multiplier,
@@ -451,6 +482,17 @@ def _best_config(
     return output
 
 
+def _agent_config_with_hyperparameters(
+    config: dict[str, Any],
+    algorithm: str,
+    hyperparameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Merges tuned hyperparameters into the base algorithm config."""
+    agent_config = copy.deepcopy(config.get("agent_config", {}).get(algorithm, {}))
+    agent_config.update(copy.deepcopy(hyperparameters))
+    return agent_config
+
+
 def _base_reward_scale(config: dict[str, Any]) -> float:
     """Returns the base reward scale using the environment defaulting rules."""
     environment_config = config.get("environment_config", {})
@@ -545,6 +587,46 @@ def _create_study_dir(
     return study_dir, study_id
 
 
+def _study_dir(
+    config: dict[str, Any],
+    config_name: str,
+    algorithm: str,
+    study_name: str | None,
+    resume_study_dir: str | Path | None,
+) -> tuple[Path, str, bool]:
+    """Returns the HPO study directory, optionally resuming an existing one."""
+    if resume_study_dir is None:
+        study_dir, study_id = _create_study_dir(
+            config,
+            config_name,
+            algorithm,
+            study_name,
+        )
+        return study_dir, study_id, False
+
+    if study_name is not None:
+        raise ValueError("study_name must not be set when resume_study_dir is used")
+    study_dir = Path(resume_study_dir)
+    if not study_dir.exists() or not study_dir.is_dir():
+        raise FileNotFoundError(f"resume_study_dir not found: {study_dir}")
+    if not (study_dir / "optuna_study.db").exists():
+        raise FileNotFoundError(
+            f"resume_study_dir does not contain optuna_study.db: {study_dir}"
+        )
+    metadata_path = study_dir / "metadata.json"
+    if metadata_path.exists():
+        metadata = _read_json(metadata_path)
+        study_id = str(metadata.get("study_id", study_dir.name))
+    else:
+        study_id = study_dir.name
+    return study_dir, study_id, True
+
+
+def _finished_trial_count(study: Any) -> int:
+    """Returns the number of Optuna trials in a finished state."""
+    return sum(1 for trial in study.trials if trial.state.is_finished())
+
+
 def _validate_hpo_inputs(
     algorithm: str,
     n_trials: int,
@@ -593,6 +675,24 @@ def _read_json(path: Path) -> dict[str, Any]:
     """Reads one JSON document."""
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def _write_metadata(
+    study_dir: Path,
+    payload: dict[str, Any],
+    is_resume: bool,
+) -> None:
+    """Writes or updates HPO metadata."""
+    path = study_dir / "metadata.json"
+    metadata: dict[str, Any] = {}
+    if is_resume and path.exists():
+        metadata = _read_json(path)
+    else:
+        metadata["start_time"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    metadata.update(payload)
+    if is_resume:
+        metadata["last_resume_time"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    _write_json(path, metadata)
 
 
 def _trial_payload_paths(study_dir: Path) -> list[Path]:
@@ -683,6 +783,14 @@ def main() -> None:
     parser.add_argument("--total-timesteps", type=int, default=DEFAULT_TOTAL_TIMESTEPS)
     parser.add_argument("--study-name")
     parser.add_argument(
+        "--resume-study-dir",
+        help=(
+            "Existing runs/hpo/<study_id> directory to continue. In resume mode, "
+            "--n-trials is interpreted as the target total number of finished "
+            "Optuna trials."
+        ),
+    )
+    parser.add_argument(
         "--rerun",
         action="store_true",
         help="Run even if completed training runs with matching configs exist.",
@@ -698,6 +806,7 @@ def main() -> None:
         seed_indices=args.seed_indices,
         total_timesteps=args.total_timesteps,
         study_name=args.study_name,
+        resume_study_dir=args.resume_study_dir,
         rerun=args.rerun,
         n_jobs=args.n_jobs,
     )

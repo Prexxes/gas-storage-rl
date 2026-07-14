@@ -206,6 +206,13 @@ writes its own `trial_XXXX.json`; aggregate `trials.csv` and
 `trial_seed_runs.csv` exports are rebuilt from those trial artifacts after
 optimization finishes.
 
+Interrupted studies can be resumed with `--resume-study-dir runs/hpo/<study_id>`.
+Resume mode reuses the existing `optuna_study.db`, `study_id`, and per-trial
+artifacts. In this mode, `--n-trials` is interpreted as the target total number
+of finished Optuna trials; the runner starts only the missing number of trials
+and then rewrites `trials.csv`, `trial_seed_runs.csv`, `best_trial.json`, and
+`best_config.json`.
+
 HPO never evaluates the test split. Phase 2 final runs are started manually from
 the saved `best_config.json` with disjoint seed indices, for example `100..107`,
 using `gas_storage_rl.training.run_experiment_group --seed-indices`. Those final
