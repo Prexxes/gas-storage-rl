@@ -40,7 +40,24 @@ def run_hpo(
     rerun: bool = False,
     n_jobs: int = 1,
 ) -> dict[str, Any]:
-    """Runs phase-1 HPO using Optuna TPE and returns a study summary."""
+    """Runs phase-1 HPO using Optuna TPE and returns a study summary.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        algorithm: Algorithm name to configure or evaluate.
+        n_trials: N trials value.
+        seed_indices: Seed repetition indices to run.
+        total_timesteps: Total timesteps value.
+        study_name: Study name value.
+        resume_study_dir: Resume study dir value.
+        rerun: Rerun value.
+        n_jobs: N jobs value.
+    
+    Returns:
+        HPO study summary.
+
+    """
     import optuna
 
     seed_indices = list(DEFAULT_HPO_SEED_INDICES if seed_indices is None else seed_indices)
@@ -99,6 +116,15 @@ def run_hpo(
     )
 
     def objective(trial: Any) -> float:
+        """Evaluates one Optuna trial and returns the validation objective.
+        
+        Args:
+            trial: Optuna trial object or fixed-trial adapter.
+        
+        Returns:
+            Computed result.
+
+        """
         return _run_trial(
             trial,
             config,
@@ -172,7 +198,25 @@ def _run_trial(
     rerun: bool,
     study_dir: Path,
 ) -> float:
-    """Runs all seed repetitions for one Optuna trial."""
+    """Runs all seed repetitions for one Optuna trial.
+    
+    Args:
+        trial: Optuna trial object or fixed-trial adapter.
+        config: Experiment configuration dictionary.
+        algorithm: Algorithm name to configure or evaluate.
+        study_id: Study id value.
+        seed_indices: Seed repetition indices to run.
+        total_timesteps: Total timesteps value.
+        rerun: Rerun value.
+        study_dir: Directory containing Optuna study artifacts.
+    
+    Returns:
+        Run trial result.
+    
+    Raises:
+        RuntimeError: If the requested operation cannot be completed.
+
+    """
     started = time.time()
     reward_scale_multiplier = suggest_reward_scale_multiplier(trial)
     reward_scale_info = _reward_scale_info(
@@ -268,7 +312,20 @@ def _write_trial_payload(
     trial_row: dict[str, Any],
     objective: float | None,
 ) -> None:
-    """Writes one trial-specific artifact for parallel-safe HPO exports."""
+    """Writes one trial-specific artifact for parallel-safe HPO exports.
+    
+    Args:
+        study_dir: Directory containing Optuna study artifacts.
+        trial_id: Trial id value.
+        algorithm: Algorithm name to configure or evaluate.
+        status: Status value.
+        hyperparameters: Hyperparameters value.
+        reward_scale_info: Reward scale info value.
+        seed_rows_for_trial: Seed rows for trial value.
+        trial_row: Trial row value.
+        objective: Objective value.
+
+    """
     payload = {
         "trial_id": trial_id,
         "algorithm": algorithm,
@@ -295,7 +352,23 @@ def _run_trial_seed(
     total_timesteps: int,
     rerun: bool,
 ) -> dict[str, Any]:
-    """Runs one trial/seed training run and returns a flat result row."""
+    """Runs one trial/seed training run and returns a flat result row.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        algorithm: Algorithm name to configure or evaluate.
+        study_id: Study id value.
+        trial_id: Trial id value.
+        seed_index: Zero-based seed repetition index.
+        hyperparameters: Hyperparameters value.
+        reward_scale_multiplier: Reward scale multiplier value.
+        total_timesteps: Total timesteps value.
+        rerun: Rerun value.
+    
+    Returns:
+        Run trial seed result.
+
+    """
     run_config = copy.deepcopy(config)
     run_config["training_config"]["total_timesteps"] = int(total_timesteps)
     run_config["agent_config"][algorithm] = _agent_config_with_hyperparameters(
@@ -381,7 +454,15 @@ def _run_trial_seed(
 
 
 def _select_hpo_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
-    """Returns the validation row used for HPO objective selection."""
+    """Returns the validation row used for HPO objective selection.
+    
+    Args:
+        summary: Summary value.
+    
+    Returns:
+        Select hpo objective metrics result.
+
+    """
     rows = _read_evaluation_rows(Path(summary["run_dir"]))
     if not rows:
         metrics = dict(summary["validation"])
@@ -395,7 +476,15 @@ def _select_hpo_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
 
 
 def _read_evaluation_rows(run_dir: Path) -> list[dict[str, str]]:
-    """Reads validation rows for one training run."""
+    """Reads validation rows for one training run.
+    
+    Args:
+        run_dir: Run dir value.
+    
+    Returns:
+        Read evaluation rows result.
+
+    """
     path = run_dir / "evaluations.csv"
     if not path.exists():
         return []
@@ -404,7 +493,15 @@ def _read_evaluation_rows(run_dir: Path) -> list[dict[str, str]]:
 
 
 def _coerce_evaluation_row(row: dict[str, str]) -> dict[str, Any]:
-    """Converts numeric CSV evaluation values to floats."""
+    """Converts numeric CSV evaluation values to floats.
+    
+    Args:
+        row: Row value.
+    
+    Returns:
+        Coerce evaluation row result.
+
+    """
     output: dict[str, Any] = {}
     for key, value in row.items():
         if value == "":
@@ -428,7 +525,23 @@ def _trial_row(
     validation_values: list[float],
     error_message: str,
 ) -> dict[str, Any]:
-    """Returns one flat trial-level CSV row."""
+    """Returns one flat trial-level CSV row.
+    
+    Args:
+        algorithm: Algorithm name to configure or evaluate.
+        trial_id: Trial id value.
+        status: Status value.
+        hyperparameters: Hyperparameters value.
+        reward_scale_info: Reward scale info value.
+        total_timesteps: Total timesteps value.
+        runtime_s: Runtime s value.
+        validation_values: Validation values value.
+        error_message: Error message value.
+    
+    Returns:
+        Trial row result.
+
+    """
     row = {
         "algorithm": algorithm,
         "trial_id": trial_id,
@@ -471,7 +584,18 @@ def _best_config(
     total_timesteps: int,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    """Returns a config copy with fixed total timesteps and algorithm marker."""
+    """Returns a config copy with fixed total timesteps and algorithm marker.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        algorithm: Algorithm name to configure or evaluate.
+        total_timesteps: Total timesteps value.
+        params: Params value.
+    
+    Returns:
+        Best config result.
+
+    """
     output = copy.deepcopy(config)
     output["training_config"]["total_timesteps"] = int(total_timesteps)
     output["agent_config"]["algorithm_name"] = algorithm
@@ -487,14 +611,32 @@ def _agent_config_with_hyperparameters(
     algorithm: str,
     hyperparameters: dict[str, Any],
 ) -> dict[str, Any]:
-    """Merges tuned hyperparameters into the base algorithm config."""
+    """Merges tuned hyperparameters into the base algorithm config.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        algorithm: Algorithm name to configure or evaluate.
+        hyperparameters: Hyperparameters value.
+    
+    Returns:
+        Agent config with hyperparameters result.
+
+    """
     agent_config = copy.deepcopy(config.get("agent_config", {}).get(algorithm, {}))
     agent_config.update(copy.deepcopy(hyperparameters))
     return agent_config
 
 
 def _base_reward_scale(config: dict[str, Any]) -> float:
-    """Returns the base reward scale using the environment defaulting rules."""
+    """Returns the base reward scale using the environment defaulting rules.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Base reward scale result.
+
+    """
     environment_config = config.get("environment_config", {})
     price_config = config.get("price_process_config", {})
     return float(
@@ -509,7 +651,16 @@ def _reward_scale_info(
     config: dict[str, Any],
     params: dict[str, Any],
 ) -> dict[str, float]:
-    """Returns base, multiplier, and effective reward-scale values."""
+    """Returns base, multiplier, and effective reward-scale values.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        params: Params value.
+    
+    Returns:
+        Reward scale info result.
+
+    """
     multiplier = float(params["reward_scale_multiplier"])
     base_reward_scale = _base_reward_scale(config)
     return {
@@ -523,7 +674,16 @@ def _apply_reward_scale_multiplier(
     config: dict[str, Any],
     reward_scale_multiplier: float,
 ) -> dict[str, float]:
-    """Applies the reward-scale multiplier to a config copy."""
+    """Applies the reward-scale multiplier to a config copy.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        reward_scale_multiplier: Reward scale multiplier value.
+    
+    Returns:
+        Apply reward scale multiplier result.
+
+    """
     reward_scale_info = _reward_scale_info(
         config,
         {"reward_scale_multiplier": reward_scale_multiplier},
@@ -544,7 +704,22 @@ def _hpo_config(
     total_timesteps: int,
     n_jobs: int,
 ) -> dict[str, Any]:
-    """Returns the saved HPO configuration."""
+    """Returns the saved HPO configuration.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        algorithm: Algorithm name to configure or evaluate.
+        study_id: Study id value.
+        seed_indices: Seed repetition indices to run.
+        n_trials: N trials value.
+        total_timesteps: Total timesteps value.
+        n_jobs: N jobs value.
+    
+    Returns:
+        Hpo config result.
+
+    """
     return {
         "study_id": study_id,
         "config_name": config_name,
@@ -570,7 +745,18 @@ def _create_study_dir(
     algorithm: str,
     study_name: str | None,
 ) -> tuple[Path, str]:
-    """Creates a unique HPO study directory."""
+    """Creates a unique HPO study directory.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        algorithm: Algorithm name to configure or evaluate.
+        study_name: Study name value.
+    
+    Returns:
+        Create study dir result.
+
+    """
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     if study_name:
         study_id = _safe_component(study_name)
@@ -594,7 +780,23 @@ def _study_dir(
     study_name: str | None,
     resume_study_dir: str | Path | None,
 ) -> tuple[Path, str, bool]:
-    """Returns the HPO study directory, optionally resuming an existing one."""
+    """Returns the HPO study directory, optionally resuming an existing one.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        algorithm: Algorithm name to configure or evaluate.
+        study_name: Study name value.
+        resume_study_dir: Resume study dir value.
+    
+    Returns:
+        Study dir result.
+    
+    Raises:
+        FileNotFoundError: If a required input file does not exist.
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if resume_study_dir is None:
         study_dir, study_id = _create_study_dir(
             config,
@@ -623,7 +825,15 @@ def _study_dir(
 
 
 def _finished_trial_count(study: Any) -> int:
-    """Returns the number of Optuna trials in a finished state."""
+    """Returns the number of Optuna trials in a finished state.
+    
+    Args:
+        study: Study value.
+    
+    Returns:
+        Finished trial count result.
+
+    """
     return sum(1 for trial in study.trials if trial.state.is_finished())
 
 
@@ -633,7 +843,18 @@ def _validate_hpo_inputs(
     seed_indices: list[int],
     n_jobs: int = 1,
 ) -> None:
-    """Validates HPO runner settings."""
+    """Validates HPO runner settings.
+    
+    Args:
+        algorithm: Algorithm name to configure or evaluate.
+        n_trials: N trials value.
+        seed_indices: Seed repetition indices to run.
+        n_jobs: N jobs value.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if algorithm not in {"ppo", "sac", "td3"}:
         raise ValueError(f"Unsupported algorithm: {algorithm}")
     if n_trials <= 0:
@@ -647,7 +868,15 @@ def _validate_hpo_inputs(
 
 
 def _safe_component(value: Any) -> str:
-    """Returns a filesystem-safe id component."""
+    """Returns a filesystem-safe id component.
+    
+    Args:
+        value: Value value.
+    
+    Returns:
+        Safe component result.
+
+    """
     text = str(value)
     cleaned = "".join(
         character if character.isalnum() or character in {"-", "_"} else "_"
@@ -657,13 +886,25 @@ def _safe_component(value: Any) -> str:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Writes one JSON document."""
+    """Writes one JSON document.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        payload: Serializable payload to persist.
+
+    """
     with path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, indent=2, default=str)
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    """Writes one JSON document through a same-directory atomic replace."""
+    """Writes one JSON document through a same-directory atomic replace.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        payload: Serializable payload to persist.
+
+    """
     temp_path = path.with_name(
         f".{path.name}.{threading.get_ident()}.{time.time_ns()}.tmp"
     )
@@ -672,7 +913,15 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    """Reads one JSON document."""
+    """Reads one JSON document.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+    
+    Returns:
+        Read json result.
+
+    """
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
 
@@ -682,7 +931,14 @@ def _write_metadata(
     payload: dict[str, Any],
     is_resume: bool,
 ) -> None:
-    """Writes or updates HPO metadata."""
+    """Writes or updates HPO metadata.
+    
+    Args:
+        study_dir: Directory containing Optuna study artifacts.
+        payload: Serializable payload to persist.
+        is_resume: Is resume value.
+
+    """
     path = study_dir / "metadata.json"
     metadata: dict[str, Any] = {}
     if is_resume and path.exists():
@@ -696,19 +952,40 @@ def _write_metadata(
 
 
 def _trial_payload_paths(study_dir: Path) -> list[Path]:
-    """Returns completed per-trial payload paths in deterministic order."""
+    """Returns completed per-trial payload paths in deterministic order.
+    
+    Args:
+        study_dir: Directory containing Optuna study artifacts.
+    
+    Returns:
+        Trial payload paths result.
+
+    """
     return sorted(study_dir.glob("trial_[0-9][0-9][0-9][0-9].json"))
 
 
 def _read_trial_payloads(study_dir: Path) -> list[dict[str, Any]]:
-    """Reads completed per-trial payloads in trial-id order."""
+    """Reads completed per-trial payloads in trial-id order.
+    
+    Args:
+        study_dir: Directory containing Optuna study artifacts.
+    
+    Returns:
+        Read trial payloads result.
+
+    """
     payloads = [_read_json(path) for path in _trial_payload_paths(study_dir)]
     payloads.sort(key=lambda payload: int(payload["trial_id"]))
     return payloads
 
 
 def _export_trial_csvs(study_dir: Path) -> None:
-    """Exports aggregate HPO CSVs from per-trial JSON artifacts."""
+    """Exports aggregate HPO CSVs from per-trial JSON artifacts.
+    
+    Args:
+        study_dir: Directory containing Optuna study artifacts.
+
+    """
     payloads = _read_trial_payloads(study_dir)
     trial_rows = [payload["trial_row"] for payload in payloads]
     seed_rows = [
@@ -722,7 +999,13 @@ def _export_trial_csvs(study_dir: Path) -> None:
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    """Writes rows to a CSV file."""
+    """Writes rows to a CSV file.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        rows: Rows to read, transform, or persist.
+
+    """
     if not rows:
         return
     fieldnames: list[str] = []
@@ -740,11 +1023,28 @@ class _FixedTrial:
     """Small Optuna FixedTrial-compatible adapter for best-config export."""
 
     def __init__(self, params: dict[str, Any]) -> None:
-        """Initializes the adapter from stored Optuna params."""
+        """Initializes the adapter from stored Optuna params.
+        
+        Args:
+            params: Params value.
+
+        """
         self.params = params
 
     def suggest_categorical(self, name: str, choices: list[Any]) -> Any:
-        """Returns a fixed categorical value."""
+        """Returns a fixed categorical value.
+        
+        Args:
+            name: Name value.
+            choices: Choices value.
+        
+        Returns:
+            Computed result.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         value = self.params[name]
         if value not in choices:
             raise ValueError(f"Fixed value for {name} is not in choices: {value}")
@@ -757,7 +1057,18 @@ class _FixedTrial:
         high: float,
         log: bool = False,
     ) -> float:
-        """Returns a fixed float value."""
+        """Returns a fixed float value.
+        
+        Args:
+            name: Name value.
+            low: Low value.
+            high: High value.
+            log: Log value.
+        
+        Returns:
+            Computed result.
+
+        """
         del low, high, log
         return float(self.params[name])
 

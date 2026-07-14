@@ -82,7 +82,16 @@ def _build_backtest_evaluation_dataset(
     config: dict[str, Any],
     synthetic_dataset: PathDataset,
 ) -> PathDataset:
-    """Combines training paths with held-out historical backtest windows."""
+    """Combines training paths with held-out historical backtest windows.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        synthetic_dataset: Synthetic dataset value.
+    
+    Returns:
+        Build backtest evaluation dataset result.
+
+    """
     historical_config = config["historical_data_config"]
     dataset_config = config["dataset_config"]
     calibrated_config = config.get("calibrated_price_process_config", {})
@@ -129,7 +138,20 @@ def _build_backtest_evaluation_dataset(
 
 
 def _load_model(algorithm_name: str, model_path: Path, env: GasStorageEnv) -> Any:
-    """Loads a Stable-Baselines3 model for the requested algorithm."""
+    """Loads a Stable-Baselines3 model for the requested algorithm.
+    
+    Args:
+        algorithm_name: Algorithm name value.
+        model_path: Model path value.
+        env: Environment used for rollout or training.
+    
+    Returns:
+        Load model result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if algorithm_name == "ppo":
         from stable_baselines3 import PPO
 
@@ -152,7 +174,19 @@ def _episode_rows(
     dataset: PathDataset,
     seed: int | None,
 ) -> list[dict[str, Any]]:
-    """Returns one final metrics row per evaluated RL episode."""
+    """Returns one final metrics row per evaluated RL episode.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        method: Method value.
+        split: Dataset split name.
+        dataset: Path dataset used by the environment or evaluator.
+        seed: Random seed for deterministic behavior.
+    
+    Returns:
+        Episode rows result.
+
+    """
     from gas_storage_rl.evaluation.metrics import summarize_episode_infos
 
     date_ranges = (
@@ -188,7 +222,13 @@ def _episode_rows(
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    """Writes rows in CSV format."""
+    """Writes rows in CSV format.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        rows: Rows to read, transform, or persist.
+
+    """
     fieldnames: list[str] = []
     for row in rows:
         for key in row:

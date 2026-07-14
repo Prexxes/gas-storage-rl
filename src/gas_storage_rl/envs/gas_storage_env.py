@@ -44,7 +44,25 @@ class GasStorageEnv(gym.Env):
         fixed_path_id: int | None = None,
         seed: int | None = None,
     ) -> None:
-        """Initializes the environment."""
+        """Initializes the environment.
+        
+        Args:
+            dataset: Path dataset used by the environment or evaluator.
+            split: Dataset split name.
+            storage_params: Storage params value.
+            price_scale: Price scale value.
+            reward_scale: Reward scale value.
+            penalty_factor: Penalty factor value.
+            initial_inventory_mean_fraction: Initial inventory mean fraction value.
+            initial_inventory_std_fraction: Initial inventory std fraction value.
+            observation_features: Observation features value.
+            fixed_path_id: Fixed path id value.
+            seed: Random seed for deterministic behavior.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         super().__init__()
         self.dataset = dataset
         self.split = split
@@ -97,7 +115,16 @@ class GasStorageEnv(gym.Env):
         seed: int | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        """Resets the environment and returns the first observation."""
+        """Resets the environment and returns the first observation.
+        
+        Args:
+            seed: Random seed for deterministic behavior.
+            options: Options value.
+        
+        Returns:
+            Initial observation and reset information.
+
+        """
         super().reset(seed=seed)
         if seed is not None:
             self.rng = np.random.default_rng(seed)
@@ -168,7 +195,15 @@ class GasStorageEnv(gym.Env):
         self,
         action: np.ndarray | list[float] | float,
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        """Applies a storage action for one decision day."""
+        """Applies a storage action for one decision day.
+        
+        Args:
+            action: Action value.
+        
+        Returns:
+            Next observation, reward, termination flags, and step information.
+
+        """
         requested_action = float(np.asarray(action, dtype=np.float32).reshape(-1)[0])
         requested_action = float(np.clip(requested_action, -1.0, 1.0))
         price = float(self.current_path[self.current_step])
@@ -226,7 +261,12 @@ class GasStorageEnv(gym.Env):
         return self._observation(), float(scaled_reward), terminated, truncated, info
 
     def _observation(self) -> np.ndarray:
-        """Builds a normalized observation."""
+        """Builds a normalized observation.
+        
+        Returns:
+            Observation result.
+
+        """
         observation = self._raw_observation()
         if not self.observation_features["inventory"]:
             observation[0] = 0.0
@@ -242,7 +282,12 @@ class GasStorageEnv(gym.Env):
         return observation
 
     def _raw_observation(self) -> np.ndarray:
-        """Builds an unmasked normalized observation."""
+        """Builds an unmasked normalized observation.
+        
+        Returns:
+            Raw observation result.
+
+        """
         step_index = min(self.current_step, self.episode_length - 1)
         price = float(self.current_path[step_index])
         current_date = self._current_date(step_index)
@@ -265,7 +310,15 @@ class GasStorageEnv(gym.Env):
         )
 
     def _current_date(self, step_index: int) -> date:
-        """Returns the calendar date represented by an episode step."""
+        """Returns the calendar date represented by an episode step.
+        
+        Args:
+            step_index: Step index value.
+        
+        Returns:
+            Current date result.
+
+        """
         if (
             self.dataset.base_dates_by_split is not None
             and self.split in self.dataset.base_dates_by_split
@@ -288,14 +341,33 @@ class GasStorageEnv(gym.Env):
 
 
 def _is_leap_year(year: int) -> bool:
-    """Returns whether a Gregorian calendar year is a leap year."""
+    """Returns whether a Gregorian calendar year is a leap year.
+    
+    Args:
+        year: Year value.
+    
+    Returns:
+        Is leap year result.
+
+    """
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
 def _validate_observation_features(
     observation_features: dict[str, bool] | None,
 ) -> dict[str, bool]:
-    """Returns a complete validated observation feature mask."""
+    """Returns a complete validated observation feature mask.
+    
+    Args:
+        observation_features: Observation features value.
+    
+    Returns:
+        Validate observation features result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     features = dict(DEFAULT_OBSERVATION_FEATURES)
     if observation_features is None:
         return features

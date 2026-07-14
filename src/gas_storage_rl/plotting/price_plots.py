@@ -18,7 +18,19 @@ def plot_price_paths(
     start_indices: np.ndarray | None = None,
     time_axis: TimeAxis = "episode",
 ):
-    """Plots individual and mean gas spot price paths."""
+    """Plots individual and mean gas spot price paths.
+    
+    Args:
+        paths: Price paths or filesystem paths to process.
+        n_paths: Number of price paths to generate or evaluate.
+        include_mean: Include mean value.
+        start_indices: Start indices value.
+        time_axis: Time axis value.
+    
+    Returns:
+        Computed result.
+
+    """
     figure, axis = plt.subplots()
     selected = paths[:n_paths]
     starts = _start_indices(start_indices, len(selected))
@@ -40,14 +52,36 @@ def plot_price_paths(
 
 
 def _start_indices(start_indices: np.ndarray | None, n_paths: int) -> np.ndarray:
-    """Returns start indices for selected paths."""
+    """Returns start indices for selected paths.
+    
+    Args:
+        start_indices: Start indices value.
+        n_paths: Number of price paths to generate or evaluate.
+    
+    Returns:
+        Start indices result.
+
+    """
     if start_indices is None:
         return np.zeros(n_paths, dtype=np.int64)
     return np.asarray(start_indices[:n_paths], dtype=np.int64)
 
 
 def _time_values(path_length: int, start_index: int, time_axis: TimeAxis) -> np.ndarray:
-    """Returns x-axis values for a path."""
+    """Returns x-axis values for a path.
+    
+    Args:
+        path_length: Path length value.
+        start_index: Start index value.
+        time_axis: Time axis value.
+    
+    Returns:
+        Time values result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     steps = np.arange(path_length, dtype=np.int64)
     if time_axis == "episode":
         return steps
@@ -59,7 +93,18 @@ def _time_values(path_length: int, start_index: int, time_axis: TimeAxis) -> np.
 
 
 def _time_axis_label(time_axis: TimeAxis) -> str:
-    """Returns a human-readable x-axis label."""
+    """Returns a human-readable x-axis label.
+    
+    Args:
+        time_axis: Time axis value.
+    
+    Returns:
+        Time axis label result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if time_axis == "episode":
         return "Episode timestep"
     if time_axis == "absolute":
@@ -74,7 +119,14 @@ def _plot_aggregate(
     aggregate_values: dict[int, list[float]],
     time_axis: TimeAxis,
 ) -> None:
-    """Plots mean or seasonal quantile aggregates."""
+    """Plots mean or seasonal quantile aggregates.
+    
+    Args:
+        axis: Axis value.
+        aggregate_values: Aggregate values value.
+        time_axis: Time axis value.
+
+    """
     x_values = np.array(sorted(aggregate_values), dtype=np.int64)
     if len(x_values) == 0:
         return

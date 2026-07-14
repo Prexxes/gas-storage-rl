@@ -36,7 +36,15 @@ class PathDataset:
     initial_inventories_by_split: dict[str, np.ndarray] | None = None
 
     def get_paths(self, split: str) -> np.ndarray:
-        """Returns fixed episode windows for a split."""
+        """Returns fixed episode windows for a split.
+        
+        Args:
+            split: Dataset split name.
+        
+        Returns:
+            Fixed episode price paths for the split.
+
+        """
         paths = self.paths_by_split[split]
         if paths.shape[1] == self.episode_length:
             return paths
@@ -49,16 +57,43 @@ class PathDataset:
         )
 
     def sample_path_id(self, split: str, rng: np.random.Generator) -> int:
-        """Samples a path id from a split."""
+        """Samples a path id from a split.
+        
+        Args:
+            split: Dataset split name.
+            rng: Random number generator used for deterministic sampling.
+        
+        Returns:
+            Sampled path identifier.
+
+        """
         return int(rng.integers(0, len(self.paths_by_split[split])))
 
     def get_path(self, split: str, path_id: int) -> np.ndarray:
-        """Returns one fixed episode window."""
+        """Returns one fixed episode window.
+        
+        Args:
+            split: Dataset split name.
+            path_id: Identifier of the path to retrieve or evaluate.
+        
+        Returns:
+            Selected fixed episode price path.
+
+        """
         start = int(self.get_start_indices(split)[path_id])
         return self.get_path_window(split, path_id, start)
 
     def get_raw_path(self, split: str, path_id: int) -> np.ndarray:
-        """Returns one stored contiguous raw price path."""
+        """Returns one stored contiguous raw price path.
+        
+        Args:
+            split: Dataset split name.
+            path_id: Identifier of the path to retrieve or evaluate.
+        
+        Returns:
+            Stored contiguous raw price path.
+
+        """
         return self.paths_by_split[split][path_id]
 
     def get_path_window(
@@ -67,7 +102,20 @@ class PathDataset:
         path_id: int,
         start_index: int,
     ) -> np.ndarray:
-        """Returns a contiguous episode window from a stored raw path."""
+        """Returns a contiguous episode window from a stored raw path.
+        
+        Args:
+            split: Dataset split name.
+            path_id: Identifier of the path to retrieve or evaluate.
+            start_index: Start index value.
+        
+        Returns:
+            Contiguous price window for the requested episode.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         raw_path = self.get_raw_path(split, path_id)
         max_start = len(raw_path) - self.episode_length
         if not 0 <= start_index <= max_start:
@@ -75,13 +123,29 @@ class PathDataset:
         return raw_path[start_index : start_index + self.episode_length]
 
     def get_start_indices(self, split: str) -> np.ndarray:
-        """Returns deterministic per-path episode start indices."""
+        """Returns deterministic per-path episode start indices.
+        
+        Args:
+            split: Dataset split name.
+        
+        Returns:
+            Computed result.
+
+        """
         if self.start_indices_by_split is None:
             return np.zeros(len(self.paths_by_split[split]), dtype=np.int64)
         return self.start_indices_by_split[split]
 
     def get_start_dates(self, split: str) -> list[date]:
-        """Returns deterministic episode start dates for a split."""
+        """Returns deterministic episode start dates for a split.
+        
+        Args:
+            split: Dataset split name.
+        
+        Returns:
+            Computed result.
+
+        """
         if self.base_dates_by_split is not None and split in self.base_dates_by_split:
             base_date = datetime.strptime(
                 self.base_dates_by_split[split], "%Y-%m-%d"
@@ -104,14 +168,28 @@ class PathDataset:
         split: str,
         default: float = 0.0,
     ) -> np.ndarray:
-        """Returns deterministic per-path initial and target inventories."""
+        """Returns deterministic per-path initial and target inventories.
+        
+        Args:
+            split: Dataset split name.
+            default: Default value.
+        
+        Returns:
+            Computed result.
+
+        """
         if self.initial_inventories_by_split is None:
             return np.full(len(self.paths_by_split[split]), default, dtype=np.float64)
         return self.initial_inventories_by_split[split]
 
     @property
     def episode_length(self) -> int:
-        """Returns the number of decision steps per path."""
+        """Returns the number of decision steps per path.
+        
+        Returns:
+            Number of decision steps in each episode.
+
+        """
         if self.episode_length_override is not None:
             return self.episode_length_override
         first_split = next(iter(self.paths_by_split.values()))
@@ -126,6 +204,7 @@ def compute_dataset_hash(config: PriceGeneratorConfig) -> str:
 
     Returns:
         Short deterministic dataset hash.
+
     """
     payload = {
         "environment_name": config.environment_name,
@@ -152,7 +231,18 @@ def compute_backtest_dataset_hash(
     window_stride: int,
     backtest_start_date: str,
 ) -> str:
-    """Computes a stable hash for historical backtest windows."""
+    """Computes a stable hash for historical backtest windows.
+    
+    Args:
+        daily_backtest_csv: Daily backtest csv value.
+        episode_length: Episode length value.
+        window_stride: Window stride value.
+        backtest_start_date: Backtest start date value.
+    
+    Returns:
+        Stable hash for the backtest dataset.
+
+    """
     payload = {
         "daily_backtest_csv": str(daily_backtest_csv),
         "episode_length": episode_length,
@@ -179,6 +269,7 @@ def load_or_generate_price_dataset(
 
     Returns:
         Path dataset with train, validation, and test splits.
+
     """
     seeds_by_split = split_seeds(
         config.dataset_seed,
@@ -272,7 +363,20 @@ def _write_metadata(
     date_ranges_by_split: dict[str, list[dict[str, str]]],
     initial_inventories_by_split: dict[str, np.ndarray],
 ) -> None:
-    """Writes cache metadata."""
+    """Writes cache metadata.
+    
+    Args:
+        dataset_dir: Dataset dir value.
+        config: Experiment configuration dictionary.
+        dataset_hash: Dataset hash value.
+        seeds_by_split: Seeds by split value.
+        paths_by_split: Paths by split value.
+        start_indices_by_split: Start indices by split value.
+        base_dates_by_split: Base dates by split value.
+        date_ranges_by_split: Date ranges by split value.
+        initial_inventories_by_split: Initial inventories by split value.
+
+    """
     metadata: dict[str, Any] = {
         "dataset_hash": dataset_hash,
         "environment_name": config.environment_name,
@@ -312,7 +416,17 @@ def _generate_start_indices(
     paths_by_split: dict[str, np.ndarray],
     seeds_by_split: dict[str, int],
 ) -> dict[str, np.ndarray]:
-    """Generates deterministic fixed starts for evaluation and baselines."""
+    """Generates deterministic fixed starts for evaluation and baselines.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        paths_by_split: Paths by split value.
+        seeds_by_split: Seeds by split value.
+    
+    Returns:
+        Generate start indices result.
+
+    """
     max_start = config.simulation_length - config.episode_length
     return {
         split: np.random.default_rng(seeds_by_split[split] + 4_000_003).integers(
@@ -330,7 +444,17 @@ def _generate_initial_inventories(
     paths_by_split: dict[str, np.ndarray],
     seeds_by_split: dict[str, int],
 ) -> dict[str, np.ndarray]:
-    """Generates fixed per-path initial inventories for non-training workflows."""
+    """Generates fixed per-path initial inventories for non-training workflows.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        paths_by_split: Paths by split value.
+        seeds_by_split: Seeds by split value.
+    
+    Returns:
+        Generate initial inventories result.
+
+    """
     output = {}
     for split, paths in paths_by_split.items():
         rng = np.random.default_rng(seeds_by_split[split] + 5_000_003)
@@ -367,7 +491,17 @@ def _build_date_ranges(
     start_indices_by_split: dict[str, np.ndarray],
     base_dates_by_split: dict[str, str],
 ) -> dict[str, list[dict[str, str]]]:
-    """Builds fixed episode date ranges from raw-path start offsets."""
+    """Builds fixed episode date ranges from raw-path start offsets.
+    
+    Args:
+        episode_length: Episode length value.
+        start_indices_by_split: Start indices by split value.
+        base_dates_by_split: Base dates by split value.
+    
+    Returns:
+        Build date ranges result.
+
+    """
     output = {}
     for split, starts in start_indices_by_split.items():
         base_date = datetime.strptime(base_dates_by_split[split], "%Y-%m-%d").date()
@@ -392,16 +526,20 @@ def build_historical_backtest_paths(
     daily_price_column: str | None = None,
 ) -> tuple[np.ndarray, list[dict[str, str]]]:
     """Builds rolling historical backtest windows from held-out daily prices.
-
+    
     Args:
         daily_backtest_csv: Daily held-out backtest CSV.
         episode_length: Number of observations per backtest episode.
         window_stride: Step size between rolling windows.
         backtest_start_date: Inclusive first date allowed in backtesting.
         daily_price_column: Optional daily price column override.
-
+    
     Returns:
         Pair of price path matrix and per-window date ranges.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     if episode_length <= 0:
         raise ValueError("episode_length must be positive")
@@ -443,7 +581,22 @@ def load_or_generate_historical_backtest_dataset(
     backtest_start_date: str = "2025-01-01",
     daily_price_column: str | None = None,
 ) -> PathDataset:
-    """Loads or caches historical backtest rolling-window paths."""
+    """Loads or caches historical backtest rolling-window paths.
+    
+    Args:
+        daily_backtest_csv: Daily backtest csv value.
+        episode_length: Episode length value.
+        cache_dir: Cache dir value.
+        use_cache: Use cache value.
+        force_regenerate: Force regenerate value.
+        window_stride: Window stride value.
+        backtest_start_date: Backtest start date value.
+        daily_price_column: Daily price column value.
+    
+    Returns:
+        Computed result.
+
+    """
     dataset_hash = compute_backtest_dataset_hash(
         daily_backtest_csv=daily_backtest_csv,
         episode_length=episode_length,

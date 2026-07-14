@@ -6,7 +6,15 @@ import numpy as np
 
 
 def interquartile_mean(values: np.ndarray) -> float:
-    """Returns the mean of observations inside the interquartile range."""
+    """Returns the mean of observations inside the interquartile range.
+    
+    Args:
+        values: Numeric values to transform or summarize.
+    
+    Returns:
+        Computed result.
+
+    """
     values = np.asarray(values, dtype=np.float64)
     lower, upper = np.quantile(values, [0.25, 0.75])
     middle = values[(values >= lower) & (values <= upper)]
@@ -14,7 +22,16 @@ def interquartile_mean(values: np.ndarray) -> float:
 
 
 def aulc(steps: np.ndarray, returns: np.ndarray) -> float:
-    """Computes area under the validation learning curve."""
+    """Computes area under the validation learning curve.
+    
+    Args:
+        steps: Steps value.
+        returns: Returns value.
+    
+    Returns:
+        Area under the learning curve.
+
+    """
     steps = np.asarray(steps, dtype=np.float64)
     returns = np.asarray(returns, dtype=np.float64)
     if len(steps) < 2:
@@ -28,10 +45,18 @@ def validation_return_aulc(
     total_timesteps: int,
 ) -> dict[str, float]:
     """Computes validation-return AULC metrics from evaluation rows.
-
+    
     If multiple rows share the same training step, the last row is used. This
     makes the final post-training validation replace the callback validation at
     the same step.
+    
+    Args:
+        evaluation_rows: Evaluation rows value.
+        total_timesteps: Total timesteps value.
+    
+    Returns:
+        Validation-return AULC metrics.
+
     """
     step_to_return = {}
     for row in evaluation_rows:
@@ -56,7 +81,16 @@ def add_risk_adjusted_return(
     metrics: dict,
     std_penalty: float,
 ) -> dict:
-    """Adds a mean-minus-volatility validation score to metrics."""
+    """Adds a mean-minus-volatility validation score to metrics.
+    
+    Args:
+        metrics: Metrics value.
+        std_penalty: Std penalty value.
+    
+    Returns:
+        Computed result.
+
+    """
     mean_return = float(metrics["mean_return_raw"])
     std_return = float(metrics["std_return_raw"])
     metrics["risk_adjusted_return_raw"] = mean_return - float(std_penalty) * std_return
@@ -65,7 +99,15 @@ def add_risk_adjusted_return(
 
 
 def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
-    """Summarizes per-step info dictionaries for one episode."""
+    """Summarizes per-step info dictionaries for one episode.
+    
+    Args:
+        infos: Per-step environment information dictionaries.
+    
+    Returns:
+        Summary metrics computed from episode infos.
+
+    """
     rewards = np.array(
         [
             info.get("raw_reward", info["raw_cashflow"] + info["terminal_penalty"])
@@ -108,7 +150,17 @@ def summarize_evaluation(
     split: str,
     total_training_env_steps: int = 0,
 ) -> dict[str, float | str]:
-    """Summarizes multiple episode results."""
+    """Summarizes multiple episode results.
+    
+    Args:
+        episode_summaries: Episode summaries value.
+        split: Dataset split name.
+        total_training_env_steps: Total training env steps value.
+    
+    Returns:
+        Aggregate evaluation metrics.
+
+    """
     raw_returns = np.array([item["episode_return_raw"] for item in episode_summaries])
     return {
         "total_training_env_steps": total_training_env_steps,

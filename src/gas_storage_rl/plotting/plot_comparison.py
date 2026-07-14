@@ -65,7 +65,16 @@ def main() -> None:
 
 
 def plot_learning_curves(metrics: pd.DataFrame, split: str) -> plt.Figure:
-    """Plots one line per RL run and benchmark reference lines."""
+    """Plots one line per RL run and benchmark reference lines.
+    
+    Args:
+        metrics: Metrics value.
+        split: Dataset split name.
+    
+    Returns:
+        Computed result.
+
+    """
     data = metrics[metrics["split"] == split].copy()
     figure, axis = plt.subplots(figsize=(9, 5))
     for label, group in data.groupby("series_label", sort=False):
@@ -87,7 +96,15 @@ def plot_learning_curves(metrics: pd.DataFrame, split: str) -> plt.Figure:
 
 
 def plot_final_return_violins(metrics: pd.DataFrame) -> plt.Figure:
-    """Plots final episode-return distributions by method."""
+    """Plots final episode-return distributions by method.
+    
+    Args:
+        metrics: Metrics value.
+    
+    Returns:
+        Computed result.
+
+    """
     return _violin_plot(
         metrics,
         value_column="episode_return_raw",
@@ -96,7 +113,15 @@ def plot_final_return_violins(metrics: pd.DataFrame) -> plt.Figure:
 
 
 def plot_regret_violins(regret: pd.DataFrame) -> plt.Figure:
-    """Plots relative regret distributions against perfect foresight."""
+    """Plots relative regret distributions against perfect foresight.
+    
+    Args:
+        regret: Regret value.
+    
+    Returns:
+        Computed result.
+
+    """
     return _violin_plot(
         regret,
         value_column="relative_regret_to_pf",
@@ -108,7 +133,16 @@ def relative_regret_to_perfect_foresight(
     metrics: pd.DataFrame,
     epsilon: float = 1e-8,
 ) -> pd.DataFrame:
-    """Computes per-episode relative regret against perfect foresight."""
+    """Computes per-episode relative regret against perfect foresight.
+    
+    Args:
+        metrics: Metrics value.
+        epsilon: Epsilon value.
+    
+    Returns:
+        Computed result.
+
+    """
     key = ["split", "path_id"]
     pf = metrics[metrics["method"] == "perfect_foresight"][
         key + ["episode_return_raw"]
@@ -126,7 +160,17 @@ def _violin_plot(
     value_column: str,
     ylabel: str,
 ) -> plt.Figure:
-    """Creates a Matplotlib violin plot grouped by method."""
+    """Creates a Matplotlib violin plot grouped by method.
+    
+    Args:
+        metrics: Metrics value.
+        value_column: Value column value.
+        ylabel: Ylabel value.
+    
+    Returns:
+        Violin plot result.
+
+    """
     methods = _ordered_methods(metrics["method"].astype(str))
     values = [
         metrics.loc[metrics["method"] == method, value_column].dropna().to_numpy()
@@ -152,7 +196,15 @@ def _violin_plot(
 
 
 def _ordered_methods(methods: pd.Series) -> list[str]:
-    """Returns benchmark methods first, followed by remaining methods."""
+    """Returns benchmark methods first, followed by remaining methods.
+    
+    Args:
+        methods: Methods value.
+    
+    Returns:
+        Ordered methods result.
+
+    """
     present = list(dict.fromkeys(methods))
     ordered = [method for method in METHOD_ORDER if method in present]
     ordered.extend(method for method in present if method not in METHOD_ORDER)
@@ -163,7 +215,16 @@ def _load_learning_curves(
     rl_run_dirs: list[str],
     benchmark_run_dir: str | None,
 ) -> pd.DataFrame:
-    """Loads RL evaluations and benchmark evaluation references."""
+    """Loads RL evaluations and benchmark evaluation references.
+    
+    Args:
+        rl_run_dirs: Rl run dirs value.
+        benchmark_run_dir: Benchmark run dir value.
+    
+    Returns:
+        Load learning curves result.
+
+    """
     frames = []
     for run_dir_text in rl_run_dirs:
         run_dir = Path(run_dir_text)
@@ -193,7 +254,17 @@ def _load_final_episode_metrics(
     benchmark_run_dir: str | None,
     split: str,
 ) -> pd.DataFrame:
-    """Loads final episode metrics from RL and benchmark runs."""
+    """Loads final episode metrics from RL and benchmark runs.
+    
+    Args:
+        rl_run_dirs: Rl run dirs value.
+        benchmark_run_dir: Benchmark run dir value.
+        split: Dataset split name.
+    
+    Returns:
+        Load final episode metrics result.
+
+    """
     frames = []
     for run_dir_text in rl_run_dirs:
         run_dir = Path(run_dir_text)
@@ -212,7 +283,15 @@ def _load_final_episode_metrics(
 
 
 def _default_output_dir(args: Any) -> Path:
-    """Returns a default comparison plot directory."""
+    """Returns a default comparison plot directory.
+    
+    Args:
+        args: Args value.
+    
+    Returns:
+        Default output dir result.
+
+    """
     if args.benchmark_run_dir:
         return Path(args.benchmark_run_dir) / "plots" / "comparison"
     if args.rl_run_dir:
@@ -221,7 +300,13 @@ def _default_output_dir(args: Any) -> Path:
 
 
 def _save(figure: plt.Figure, path: Path) -> None:
-    """Saves and closes a Matplotlib figure."""
+    """Saves and closes a Matplotlib figure.
+    
+    Args:
+        figure: Figure value.
+        path: Filesystem path to read from or write to.
+
+    """
     figure.tight_layout()
     figure.savefig(path, dpi=160)
     plt.close(figure)

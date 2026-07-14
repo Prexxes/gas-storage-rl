@@ -47,12 +47,27 @@ class LSMCPolicyAdapter:
     """Adapts an LSMC benchmark to the SB3-style policy interface."""
 
     def __init__(self, benchmark: LSMCBenchmark, env: GasStorageEnv) -> None:
-        """Initializes the adapter."""
+        """Initializes the adapter.
+        
+        Args:
+            benchmark: Benchmark value.
+            env: Environment used for rollout or training.
+
+        """
         self.benchmark = benchmark
         self.env = env
 
     def predict(self, observation: np.ndarray, deterministic: bool = True):
-        """Returns the LSMC action for the environment's current state."""
+        """Returns the LSMC action for the environment's current state.
+        
+        Args:
+            observation: Observation value.
+            deterministic: Deterministic value.
+        
+        Returns:
+            Predicted action and optional recurrent state.
+
+        """
         del observation, deterministic
         start_date = self.env.dataset.get_start_dates(self.env.split)[
             self.env.current_path_id
@@ -69,7 +84,15 @@ class LSMCPolicyAdapter:
 
 
 def config_hash(config: dict[str, Any]) -> str:
-    """Returns a short stable hash for a loaded configuration."""
+    """Returns a short stable hash for a loaded configuration.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Stable hash for the configuration.
+
+    """
     serialized = json.dumps(config, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:8]
 
@@ -79,7 +102,17 @@ def create_benchmark_run_dir(
     config_name: str,
     hash_value: str,
 ) -> tuple[Path, str]:
-    """Creates a benchmark run directory with a human-readable run id."""
+    """Creates a benchmark run directory with a human-readable run id.
+    
+    Args:
+        base_dir: Parent directory for generated artifacts.
+        config_name: Human-readable configuration name.
+        hash_value: Hash value value.
+    
+    Returns:
+        Created benchmark run directory.
+
+    """
     safe_config_name = "".join(
         character if character.isalnum() or character in {"-", "_"} else "_"
         for character in config_name
@@ -98,13 +131,25 @@ def create_benchmark_run_dir(
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Writes a JSON payload to disk."""
+    """Writes a JSON payload to disk.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        payload: Serializable payload to persist.
+
+    """
     with path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, indent=2, default=str)
 
 
 def write_metrics_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    """Writes benchmark metrics in long CSV format."""
+    """Writes benchmark metrics in long CSV format.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        rows: Rows to read, transform, or persist.
+
+    """
     fieldnames: list[str] = []
     for row in rows:
         for key in row:
@@ -117,7 +162,13 @@ def write_metrics_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    """Writes one JSON object per line."""
+    """Writes one JSON object per line.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        rows: Rows to read, transform, or persist.
+
+    """
     with path.open("w", encoding="utf-8") as file:
         for row in rows:
             file.write(json.dumps(row, default=str))
@@ -125,7 +176,19 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def timeline_steps(total_timesteps: int | None, eval_freq: int | None) -> list[int]:
-    """Returns evaluation steps used for benchmark reference lines."""
+    """Returns evaluation steps used for benchmark reference lines.
+    
+    Args:
+        total_timesteps: Total timesteps value.
+        eval_freq: Eval freq value.
+    
+    Returns:
+        Training-step coordinates for benchmark reference lines.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if total_timesteps is None:
         return []
     if total_timesteps < 0:
@@ -144,7 +207,18 @@ def benchmark_timeline_rows(
     config_name: str,
     hash_value: str,
 ) -> list[dict[str, Any]]:
-    """Expands benchmark metrics over fixed training-step coordinates."""
+    """Expands benchmark metrics over fixed training-step coordinates.
+    
+    Args:
+        output: Output value.
+        steps: Steps value.
+        config_name: Human-readable configuration name.
+        hash_value: Hash value value.
+    
+    Returns:
+        Computed result.
+
+    """
     rows = []
     for split, benchmarks in output["splits"].items():
         for benchmark, metrics in benchmarks.items():
@@ -172,7 +246,19 @@ def trajectory_episode_rows(
     date_ranges: list[dict[str, str]] | None = None,
     seed: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Converts environment trajectories to one row per evaluated episode."""
+    """Converts environment trajectories to one row per evaluated episode.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        method: Method value.
+        split: Dataset split name.
+        date_ranges: Date ranges value.
+        seed: Random seed for deterministic behavior.
+    
+    Returns:
+        Computed result.
+
+    """
     rows = []
     for trajectory in trajectories:
         infos = trajectory["infos"]
@@ -206,7 +292,16 @@ def perfect_foresight_episode_rows(
     trajectories: list[dict[str, Any]],
     split: str,
 ) -> list[dict[str, Any]]:
-    """Converts perfect-foresight solution trajectories to episode metric rows."""
+    """Converts perfect-foresight solution trajectories to episode metric rows.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        split: Dataset split name.
+    
+    Returns:
+        Computed result.
+
+    """
     rows = []
     for trajectory in trajectories:
         rows.append(
@@ -247,7 +342,16 @@ def _start_date_for_path(
     date_ranges: list[dict[str, str]] | None,
     path_id: int,
 ) -> str | None:
-    """Returns the serialized start date for a path id if available."""
+    """Returns the serialized start date for a path id if available.
+    
+    Args:
+        date_ranges: Date ranges value.
+        path_id: Identifier of the path to retrieve or evaluate.
+    
+    Returns:
+        Start date for path result.
+
+    """
     if date_ranges is None:
         return None
     return date_ranges[path_id].get("start_date")
@@ -264,7 +368,23 @@ def benchmark_metadata(
     timeline_total_timesteps: int | None,
     timeline_eval_freq: int | None,
 ) -> dict[str, Any]:
-    """Returns reproducibility metadata for a benchmark run."""
+    """Returns reproducibility metadata for a benchmark run.
+    
+    Args:
+        run_id: Run id value.
+        config_name: Human-readable configuration name.
+        hash_value: Hash value value.
+        splits: Dataset split names.
+        writes_perfect_foresight_trajectories: Writes perfect foresight trajectories value.
+        includes_oracle_cloned_policy: Includes oracle cloned policy value.
+        writes_final_episode_metrics: Writes final episode metrics value.
+        timeline_total_timesteps: Timeline total timesteps value.
+        timeline_eval_freq: Timeline eval freq value.
+    
+    Returns:
+        Computed result.
+
+    """
     try:
         git_commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -294,7 +414,16 @@ def benchmark_metadata(
 
 
 def validate_splits(dataset: Any, splits: list[str]) -> None:
-    """Raises a clear error when requested splits are unavailable."""
+    """Raises a clear error when requested splits are unavailable.
+    
+    Args:
+        dataset: Path dataset used by the environment or evaluator.
+        splits: Dataset split names.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     available = set(dataset.paths_by_split)
     missing = [split for split in splits if split not in available]
     if missing:
@@ -314,7 +443,20 @@ def enrich_metrics(
     config_name: str,
     hash_value: str,
 ) -> dict[str, Any]:
-    """Adds benchmark-run identifiers to a metrics dictionary."""
+    """Adds benchmark-run identifiers to a metrics dictionary.
+    
+    Args:
+        metrics: Metrics value.
+        benchmark: Benchmark value.
+        split: Dataset split name.
+        run_id: Run id value.
+        config_name: Human-readable configuration name.
+        hash_value: Hash value value.
+    
+    Returns:
+        Computed result.
+
+    """
     enriched = {
         "run_id": run_id,
         "config_name": config_name,
@@ -327,7 +469,16 @@ def enrich_metrics(
 
 
 def _date_ranges_for_split(dataset: Any, split: str) -> list[dict[str, str]] | None:
-    """Returns serialized date ranges for a split when available."""
+    """Returns serialized date ranges for a split when available.
+    
+    Args:
+        dataset: Path dataset used by the environment or evaluator.
+        split: Dataset split name.
+    
+    Returns:
+        Date ranges for split result.
+
+    """
     if dataset.date_ranges_by_split is None:
         return None
     return dataset.date_ranges_by_split.get(split)
@@ -341,7 +492,23 @@ def fit_oracle_cloned_policy(
     observation_dim: int,
     config: dict[str, Any],
 ) -> tuple[OracleClonedPolicy, dict[str, Any]]:
-    """Fits a policy on pretrain and train perfect-foresight trajectories."""
+    """Fits a policy on pretrain and train perfect-foresight trajectories.
+    
+    Args:
+        dataset: Path dataset used by the environment or evaluator.
+        storage_params: Storage params value.
+        env_kwargs: Env kwargs value.
+        perfect_foresight: Perfect foresight value.
+        observation_dim: Observation dim value.
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     available = set(dataset.paths_by_split)
     missing = [
         split for split in ORACLE_CLONING_TRAINING_SPLITS if split not in available
@@ -414,7 +581,22 @@ def run_benchmarks(
     random_policy_seeds: list[int] | None = None,
     show_progress: bool = False,
 ) -> dict[str, Any]:
-    """Runs all benchmark policies and returns metrics by split."""
+    """Runs all benchmark policies and returns metrics by split.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        splits: Dataset split names.
+        write_perfect_foresight_trajectories: Write perfect foresight trajectories value.
+        include_oracle_cloned_policy: Include oracle cloned policy value.
+        write_final_episode_metrics: Write final episode metrics value.
+        random_policy_seeds: Random policy seeds value.
+        show_progress: Show progress value.
+    
+    Returns:
+        Benchmark metrics grouped by split.
+
+    """
     progress_total = 3 + len(splits) + int(include_oracle_cloned_policy)
     progress = CliProgress("run_benchmarks", total=progress_total, enabled=show_progress)
     progress_step = 1
@@ -620,7 +802,23 @@ def log_benchmark_results(
     timeline_total_timesteps: int | None = None,
     timeline_eval_freq: int | None = None,
 ) -> Path:
-    """Persists benchmark metrics as config, metadata, JSON, and CSV files."""
+    """Persists benchmark metrics as config, metadata, JSON, and CSV files.
+    
+    Args:
+        output: Output value.
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        splits: Dataset split names.
+        write_perfect_foresight_trajectories: Write perfect foresight trajectories value.
+        include_oracle_cloned_policy: Include oracle cloned policy value.
+        write_final_episode_metrics: Write final episode metrics value.
+        timeline_total_timesteps: Timeline total timesteps value.
+        timeline_eval_freq: Timeline eval freq value.
+    
+    Returns:
+        Computed result.
+
+    """
     hash_value = config_hash(config)
     run_dir, run_id = create_benchmark_run_dir(
         config["logging_config"]["run_dir"],

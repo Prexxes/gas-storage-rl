@@ -19,7 +19,12 @@ from gas_storage_rl.prices.seasonal import (
 
 
 def default_price_parameters() -> dict[str, float]:
-    """Returns fallback parameters for additive synthetic price processes."""
+    """Returns fallback parameters for additive synthetic price processes.
+    
+    Returns:
+        Fallback price process parameters.
+
+    """
     return {
         "seasonal_level": 2.0,
         "seasonal_amplitude": 1.0,
@@ -58,7 +63,12 @@ class HistoricalCalibrationResult:
     jump_observations: int
 
     def to_price_params(self) -> dict[str, float | list[float] | str | int]:
-        """Serializes calibrated parameters for generators and cache metadata."""
+        """Serializes calibrated parameters for generators and cache metadata.
+        
+        Returns:
+            Generator-compatible price parameter dictionary.
+
+        """
         params: dict[str, float | list[float] | str | int] = {
             **self.seasonality.as_params(),
             "ar1_phi": self.ar1_phi,
@@ -102,6 +112,7 @@ def calibrate_historical_price_process(
 
     Returns:
         Calibrated historical price process.
+
     """
     monthly_prices = load_historical_price_csv(
         monthly_calibration_csv,
@@ -154,7 +165,16 @@ def compute_daily_residuals(
     daily_prices: HistoricalPriceSeries,
     seasonality: MonthlySeasonality,
 ) -> np.ndarray:
-    """Computes daily log-price residuals after removing monthly seasonality."""
+    """Computes daily log-price residuals after removing monthly seasonality.
+    
+    Args:
+        daily_prices: Daily prices value.
+        seasonality: Seasonality value.
+    
+    Returns:
+        Computed result.
+
+    """
     log_prices = np.log(daily_prices.prices.to_numpy(dtype=np.float64))
     seasonal_log_prices = seasonality.log_curve_for_dates(daily_prices.dates)
     residuals = log_prices - seasonal_log_prices
@@ -162,7 +182,18 @@ def compute_daily_residuals(
 
 
 def _fit_ar1(residuals: np.ndarray) -> tuple[float, np.ndarray]:
-    """Fits ``r_t = phi * r_{t-1} + epsilon_t`` by least squares."""
+    """Fits ``r_t = phi * r_{t-1} + epsilon_t`` by least squares.
+    
+    Args:
+        residuals: Residuals value.
+    
+    Returns:
+        Fit ar1 result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if len(residuals) < 3:
         raise ValueError(
             "At least three daily observations are required for AR(1) calibration"
@@ -177,7 +208,15 @@ def _fit_ar1(residuals: np.ndarray) -> tuple[float, np.ndarray]:
 
 
 def _robust_sigma(values: np.ndarray) -> float:
-    """Returns a positive robust scale estimate based on MAD."""
+    """Returns a positive robust scale estimate based on MAD.
+    
+    Args:
+        values: Numeric values to transform or summarize.
+    
+    Returns:
+        Robust sigma result.
+
+    """
     median = np.median(values)
     mad = np.median(np.abs(values - median))
     sigma = float(1.4826 * mad)

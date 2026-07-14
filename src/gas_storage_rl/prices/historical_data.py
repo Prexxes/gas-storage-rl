@@ -17,12 +17,22 @@ class HistoricalPriceSeries:
 
     @property
     def dates(self) -> pd.Series:
-        """Returns sorted observation dates."""
+        """Returns sorted observation dates.
+        
+        Returns:
+            Date index for the historical series.
+
+        """
         return self.data["date"]
 
     @property
     def prices(self) -> pd.Series:
-        """Returns positive prices."""
+        """Returns positive prices.
+        
+        Returns:
+            Price values for the historical series.
+
+        """
         return self.data[self.price_column]
 
 
@@ -43,6 +53,7 @@ def load_historical_price_csv(
 
     Raises:
         ValueError: If required columns are missing or prices are invalid.
+
     """
     csv_path = _normalize_path(path)
     frame = pd.read_csv(csv_path)
@@ -86,7 +97,17 @@ def assert_date_range(
     max_date: str | pd.Timestamp | None = None,
     min_date: str | pd.Timestamp | None = None,
 ) -> None:
-    """Validates inclusive date bounds for a historical price series."""
+    """Validates inclusive date bounds for a historical price series.
+    
+    Args:
+        series: Series value.
+        max_date: Max date value.
+        min_date: Min date value.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if max_date is not None:
         cutoff = pd.Timestamp(max_date)
         if (series.dates > cutoff).any():
@@ -102,7 +123,18 @@ def assert_date_range(
 
 
 def _infer_price_column(frame: pd.DataFrame) -> str:
-    """Infers the single non-date, non-split numeric price column."""
+    """Infers the single non-date, non-split numeric price column.
+    
+    Args:
+        frame: Frame value.
+    
+    Returns:
+        Infer price column result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     candidates = [column for column in frame.columns if column not in {"date", "split"}]
     numeric_candidates = [
         column
@@ -118,7 +150,15 @@ def _infer_price_column(frame: pd.DataFrame) -> str:
 
 
 def _normalize_path(path: str | Path) -> Path:
-    """Converts Windows drive paths to WSL mount paths when needed."""
+    """Converts Windows drive paths to WSL mount paths when needed.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+    
+    Returns:
+        Normalize path result.
+
+    """
     path_text = str(path)
     original_path = Path(path_text)
     if original_path.exists():

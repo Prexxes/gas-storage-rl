@@ -26,7 +26,13 @@ class PerfectForesightBaseline:
     """Solves each known price path with full future information."""
 
     def __init__(self, storage_params: StorageParams, lambda_terminal: float) -> None:
-        """Initializes the baseline."""
+        """Initializes the baseline.
+        
+        Args:
+            storage_params: Storage params value.
+            lambda_terminal: Lambda terminal value.
+
+        """
         self.storage_params = storage_params
         self.lambda_terminal = float(lambda_terminal)
 
@@ -36,7 +42,17 @@ class PerfectForesightBaseline:
         initial_inventory: float | None = None,
         target_inventory: float | None = None,
     ) -> PerfectForesightResult:
-        """Solves the finite-horizon linear program for one path."""
+        """Solves the finite-horizon linear program for one path.
+        
+        Args:
+            prices: Price series or price paths to process.
+            initial_inventory: Initial inventory value.
+            target_inventory: Target inventory value.
+        
+        Returns:
+            Perfect-foresight solution for one path.
+
+        """
         initial = (
             self.storage_params.initial_inventory
             if initial_inventory is None
@@ -122,7 +138,17 @@ class PerfectForesightBaseline:
         initial_inventories: np.ndarray | None = None,
         target_inventories: np.ndarray | None = None,
     ) -> dict[str, float]:
-        """Evaluates the upper bound over multiple known paths."""
+        """Evaluates the upper bound over multiple known paths.
+        
+        Args:
+            paths: Price paths or filesystem paths to process.
+            initial_inventories: Initial inventories value.
+            target_inventories: Target inventories value.
+        
+        Returns:
+            Computed result.
+
+        """
         initial_values = _inventory_values(
             initial_inventories,
             len(paths),
@@ -156,7 +182,19 @@ class PerfectForesightBaseline:
         initial_inventories: np.ndarray | None = None,
         target_inventories: np.ndarray | None = None,
     ) -> list[dict[str, Any]]:
-        """Solves and serializes perfect-foresight trajectories for fixed paths."""
+        """Solves and serializes perfect-foresight trajectories for fixed paths.
+        
+        Args:
+            paths: Price paths or filesystem paths to process.
+            split: Dataset split name.
+            date_ranges: Date ranges value.
+            initial_inventories: Initial inventories value.
+            target_inventories: Target inventories value.
+        
+        Returns:
+            Perfect-foresight solutions for multiple paths.
+
+        """
         initial_values = _inventory_values(
             initial_inventories,
             len(paths),
@@ -197,7 +235,20 @@ def _inventory_values(
     n_paths: int,
     default: float,
 ) -> np.ndarray:
-    """Returns a validated inventory vector for path-wise optimization."""
+    """Returns a validated inventory vector for path-wise optimization.
+    
+    Args:
+        values: Numeric values to transform or summarize.
+        n_paths: Number of price paths to generate or evaluate.
+        default: Default value.
+    
+    Returns:
+        Inventory values result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if values is None:
         return np.full(n_paths, default, dtype=np.float64)
     array = np.asarray(values, dtype=np.float64)

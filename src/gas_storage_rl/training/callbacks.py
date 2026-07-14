@@ -32,7 +32,20 @@ class TrainingLoggingCallback(BaseCallback):
         total_timesteps: int | None = None,
         progress: CliProgress | None = None,
     ) -> None:
-        """Initializes the callback."""
+        """Initializes the callback.
+        
+        Args:
+            experiment_logger: Experiment logger value.
+            eval_env: Environment used for deterministic evaluation.
+            eval_freq: Eval freq value.
+            algorithm_name: Algorithm name value.
+            deterministic: Deterministic value.
+            risk_adjusted_std_penalty: Risk adjusted std penalty value.
+            validation_path_ids: Validation path ids value.
+            total_timesteps: Total timesteps value.
+            progress: Progress value.
+
+        """
         super().__init__()
         self.experiment_logger = experiment_logger
         self.eval_env = eval_env
@@ -56,7 +69,12 @@ class TrainingLoggingCallback(BaseCallback):
         self._run_validation_if_due(force=True)
 
     def _on_step(self) -> bool:
-        """Collects per-step infos and runs periodic validation."""
+        """Collects per-step infos and runs periodic validation.
+        
+        Returns:
+            On step result.
+
+        """
         infos = self.locals.get("infos", [])
         dones = self.locals.get("dones", [])
         self._ensure_episode_buffers(len(infos))
@@ -81,12 +99,22 @@ class TrainingLoggingCallback(BaseCallback):
             self.progress.finish("training complete")
 
     def _ensure_episode_buffers(self, n_envs: int) -> None:
-        """Ensures one info buffer exists per vectorized environment."""
+        """Ensures one info buffer exists per vectorized environment.
+        
+        Args:
+            n_envs: N envs value.
+
+        """
         while len(self.episode_infos) < n_envs:
             self.episode_infos.append([])
 
     def _log_completed_episode(self, env_index: int) -> None:
-        """Writes one completed training episode to metrics.csv."""
+        """Writes one completed training episode to metrics.csv.
+        
+        Args:
+            env_index: Env index value.
+
+        """
         infos = self.episode_infos[env_index]
         if not infos:
             return
@@ -104,7 +132,12 @@ class TrainingLoggingCallback(BaseCallback):
         self.episode_infos[env_index] = []
 
     def _run_validation_if_due(self, force: bool = False) -> None:
-        """Runs validation at configured training-step intervals."""
+        """Runs validation at configured training-step intervals.
+        
+        Args:
+            force: Force value.
+
+        """
         if self.eval_freq <= 0:
             return
         if not force and self.num_timesteps % self.eval_freq != 0:
@@ -137,7 +170,12 @@ class TrainingLoggingCallback(BaseCallback):
             self.model.save(risk_adjusted_model_path)
 
     def _sb3_diagnostics(self) -> dict[str, float]:
-        """Extracts currently available SB3 logger diagnostics."""
+        """Extracts currently available SB3 logger diagnostics.
+        
+        Returns:
+            Sb3 diagnostics result.
+
+        """
         diagnostics = {}
         name_to_value = getattr(self.model.logger, "name_to_value", {})
         keys = [

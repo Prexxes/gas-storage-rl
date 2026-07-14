@@ -9,7 +9,14 @@ class CliProgress:
     """Wraps tqdm with an absolute-value progress API."""
 
     def __init__(self, label: str, total: int | None = None, enabled: bool = True):
-        """Initializes the progress reporter."""
+        """Initializes the progress reporter.
+        
+        Args:
+            label: Label value.
+            total: Total value.
+            enabled: Enabled value.
+
+        """
         self.label = label
         self.total = total
         self.enabled = enabled
@@ -27,7 +34,13 @@ class CliProgress:
             )
 
     def update(self, value: int | None = None, message: str | None = None) -> None:
-        """Updates the progress bar to an absolute value."""
+        """Updates the progress bar to an absolute value.
+        
+        Args:
+            value: Value value.
+            message: Message value.
+
+        """
         if not self.enabled or self._bar is None:
             return
         if value is not None:
@@ -44,11 +57,22 @@ class CliProgress:
         self._bar.refresh()
 
     def step(self, value: int, message: str | None = None) -> None:
-        """Updates the progress bar to a completed absolute step."""
+        """Updates the progress bar to a completed absolute step.
+        
+        Args:
+            value: Value value.
+            message: Message value.
+
+        """
         self.update(value, message)
 
     def finish(self, message: str = "done") -> None:
-        """Completes and closes the progress bar."""
+        """Completes and closes the progress bar.
+        
+        Args:
+            message: Message value.
+
+        """
         if not self.enabled or self._bar is None:
             return
         self.update(self.total, message)

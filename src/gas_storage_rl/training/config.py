@@ -15,13 +15,33 @@ from gas_storage_rl.prices.generators import PriceGeneratorConfig
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
-    """Loads a YAML configuration file."""
+    """Loads a YAML configuration file.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+    
+    Returns:
+        Parsed YAML configuration dictionary.
+
+    """
     with Path(path).open("r", encoding="utf-8") as file:
         return yaml.safe_load(file)
 
 
 def seeds_for_run(seeds: dict[str, Any], seed_index: int) -> dict[str, int]:
-    """Returns reproducible per-run seeds while preserving dataset/eval seeds."""
+    """Returns reproducible per-run seeds while preserving dataset/eval seeds.
+    
+    Args:
+        seeds: Seeds value.
+        seed_index: Zero-based seed repetition index.
+    
+    Returns:
+        Deterministic seeds for the requested run index.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if seed_index < 0:
         raise ValueError("seed_index must be non-negative")
     output = {key: int(value) for key, value in seeds.items()}
@@ -39,7 +59,17 @@ def build_effective_run_config(
     algorithm_name: str,
     seed_index: int | None = None,
 ) -> dict[str, Any]:
-    """Returns the configuration values that affect one training run."""
+    """Returns the configuration values that affect one training run.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        algorithm_name: Algorithm name value.
+        seed_index: Zero-based seed repetition index.
+    
+    Returns:
+        Effective run configuration dictionary.
+
+    """
     effective = {
         "environment_config": dict(config["environment_config"]),
         "dataset_config": _effective_dataset_config(config["dataset_config"]),
@@ -75,7 +105,15 @@ def build_effective_run_config(
 def build_environment(
     config: dict[str, Any],
 ) -> tuple[PathDataset, StorageParams, dict[str, Any]]:
-    """Builds dataset, storage parameters, and environment keyword arguments."""
+    """Builds dataset, storage parameters, and environment keyword arguments.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Dataset, storage parameters, and environment keyword arguments.
+
+    """
     env_config = config["environment_config"]
     dataset_config = config["dataset_config"]
     price_config = _build_price_process_config(config)
@@ -149,7 +187,15 @@ def build_environment(
 
 
 def _build_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
-    """Returns fallback or historically calibrated price-process parameters."""
+    """Returns fallback or historically calibrated price-process parameters.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Build price process config result.
+
+    """
     price_process_config = config.get("price_process_config", {})
     if "parameters" in price_process_config:
         price_config = dict(price_process_config["parameters"])
@@ -184,7 +230,15 @@ def _build_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _effective_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
-    """Returns logged price-process provenance and effective parameters."""
+    """Returns logged price-process provenance and effective parameters.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Effective price process config result.
+
+    """
     price_config = _build_price_process_config(config)
     environment_name = price_config.pop(
         "_environment_name",
@@ -222,7 +276,15 @@ def _effective_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _effective_dataset_config(dataset_config: dict[str, Any]) -> dict[str, Any]:
-    """Returns dataset settings used by training runs."""
+    """Returns dataset settings used by training runs.
+    
+    Args:
+        dataset_config: Dataset config value.
+    
+    Returns:
+        Effective dataset config result.
+
+    """
     keys = (
         "n_pretrain_paths",
         "n_train_paths",
@@ -240,7 +302,16 @@ def _effective_training_config(
     training_config: dict[str, Any],
     seed_index: int | None,
 ) -> dict[str, Any]:
-    """Returns training settings used by one run."""
+    """Returns training settings used by one run.
+    
+    Args:
+        training_config: Training configuration dictionary.
+        seed_index: Zero-based seed repetition index.
+    
+    Returns:
+        Effective training config result.
+
+    """
     effective = {
         "total_timesteps": int(training_config["total_timesteps"]),
         "eval_freq": int(training_config["eval_freq"]),
@@ -253,6 +324,14 @@ def _effective_training_config(
 
 
 def _effective_seeds(seeds: dict[str, Any]) -> dict[str, int]:
-    """Returns non-plot seeds used by training and evaluation."""
+    """Returns non-plot seeds used by training and evaluation.
+    
+    Args:
+        seeds: Seeds value.
+    
+    Returns:
+        Effective seeds result.
+
+    """
     keys = ("master_seed", "dataset_seed", "env_seed", "agent_seed", "eval_seed")
     return {key: int(seeds[key]) for key in keys if key in seeds}

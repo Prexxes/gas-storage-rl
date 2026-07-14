@@ -20,7 +20,13 @@ class _ActorNetwork(nn.Module):
         observation_dim: int,
         hidden_sizes: Sequence[int],
     ) -> None:
-        """Initializes the actor network."""
+        """Initializes the actor network.
+        
+        Args:
+            observation_dim: Observation dim value.
+            hidden_sizes: Hidden sizes value.
+
+        """
         super().__init__()
         layers: list[nn.Module] = []
         input_dim = int(observation_dim)
@@ -33,7 +39,15 @@ class _ActorNetwork(nn.Module):
         self.network = nn.Sequential(*layers)
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        """Returns bounded actions for a batch of observations."""
+        """Returns bounded actions for a batch of observations.
+        
+        Args:
+            observations: Observations value.
+        
+        Returns:
+            Computed result.
+
+        """
         return self.network(observations)
 
 
@@ -47,7 +61,15 @@ class OracleClonedPolicy:
         seed: int = 0,
         device: str = "cpu",
     ) -> None:
-        """Initializes the policy."""
+        """Initializes the policy.
+        
+        Args:
+            observation_dim: Observation dim value.
+            hidden_sizes: Hidden sizes value.
+            seed: Random seed for deterministic behavior.
+            device: Device value.
+
+        """
         torch.manual_seed(seed)
         self.observation_dim = int(observation_dim)
         self.hidden_sizes = tuple(int(size) for size in hidden_sizes)
@@ -66,7 +88,23 @@ class OracleClonedPolicy:
         learning_rate: float,
         seed: int = 0,
     ) -> list[dict[str, float | int]]:
-        """Fits the policy to observation/action samples."""
+        """Fits the policy to observation/action samples.
+        
+        Args:
+            observations: Observations value.
+            actions: Actions value.
+            epochs: Epochs value.
+            batch_size: Batch size value.
+            learning_rate: Learning rate value.
+            seed: Random seed for deterministic behavior.
+        
+        Returns:
+            Fitted model or policy instance.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         observations = np.asarray(observations, dtype=np.float32)
         actions = np.asarray(actions, dtype=np.float32)
         if observations.ndim != 2 or observations.shape[1] != self.observation_dim:
@@ -118,7 +156,16 @@ class OracleClonedPolicy:
         return history
 
     def predict(self, observation: np.ndarray, deterministic: bool = True):
-        """Returns an action compatible with Stable-Baselines3 policies."""
+        """Returns an action compatible with Stable-Baselines3 policies.
+        
+        Args:
+            observation: Observation value.
+            deterministic: Deterministic value.
+        
+        Returns:
+            Predicted action and optional recurrent state.
+
+        """
         del deterministic
         observation_array = np.asarray(observation, dtype=np.float32).reshape(
             1,
@@ -135,7 +182,16 @@ class OracleClonedPolicy:
         return np.asarray(action, dtype=np.float32), None
 
     def save(self, path: str | Path, metadata: dict[str, Any] | None = None) -> Path:
-        """Saves policy weights and construction metadata."""
+        """Saves policy weights and construction metadata.
+        
+        Args:
+            path: Filesystem path to read from or write to.
+            metadata: Metadata payload to persist or enrich.
+        
+        Returns:
+            Computed result.
+
+        """
         output_path = Path(path)
         payload = {
             "observation_dim": self.observation_dim,
@@ -152,7 +208,16 @@ class OracleClonedPolicy:
         path: str | Path,
         device: str = "cpu",
     ) -> "OracleClonedPolicy":
-        """Loads a saved oracle-cloned policy."""
+        """Loads a saved oracle-cloned policy.
+        
+        Args:
+            path: Filesystem path to read from or write to.
+            device: Device value.
+        
+        Returns:
+            Loaded policy instance.
+
+        """
         payload = torch.load(Path(path), map_location=device)
         policy = cls(
             observation_dim=int(payload["observation_dim"]),

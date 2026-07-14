@@ -23,6 +23,7 @@ def simulate_ou_residuals(
 
     Returns:
         Residual matrix with shape ``(n_paths, episode_length)``.
+
     """
     rng = np.random.default_rng(seed)
     residuals = np.zeros((n_paths, episode_length), dtype=np.float64)
@@ -45,7 +46,7 @@ def simulate_additive_ou_process(
     seed: int | None = None,
 ) -> np.ndarray:
     """Simulates an exactly discretized additive Ornstein-Uhlenbeck process.
-
+    
     Args:
         n_paths: Number of paths to simulate.
         episode_length: Number of daily observations per path.
@@ -55,9 +56,13 @@ def simulate_additive_ou_process(
         start_value: Initial process value for every path.
         time_step: Duration between two observations.
         seed: Random seed.
-
+    
     Returns:
         Process values with shape ``(n_paths, episode_length)``.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     if speed_of_mean_reversion <= 0.0:
         raise ValueError("speed_of_mean_reversion must be positive")

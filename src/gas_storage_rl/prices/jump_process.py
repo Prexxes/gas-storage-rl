@@ -29,6 +29,7 @@ def simulate_jump_component(
 
     Returns:
         Jump matrix with shape ``(n_paths, episode_length)``.
+
     """
     rng = np.random.default_rng(seed)
     regular_mask = rng.random((n_paths, episode_length)) < jump_probability

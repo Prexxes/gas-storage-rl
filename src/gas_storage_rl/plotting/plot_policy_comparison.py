@@ -127,7 +127,15 @@ def main() -> None:
 
 
 def plot_policy_comparison(trajectories: list[dict[str, Any]]) -> plt.Figure:
-    """Plots price, actions, storage, and economic return for multiple methods."""
+    """Plots price, actions, storage, and economic return for multiple methods.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+    
+    Returns:
+        Computed result.
+
+    """
     figure = plt.figure(figsize=(12, 9), layout="constrained")
     grid = figure.add_gridspec(
         4,
@@ -254,7 +262,18 @@ def _evaluate_policy(
     method: str,
     path_id: int,
 ) -> dict[str, Any]:
-    """Evaluates one policy on one fixed path and labels the trajectory."""
+    """Evaluates one policy on one fixed path and labels the trajectory.
+    
+    Args:
+        env: Environment used for rollout or training.
+        policy: Policy value.
+        method: Method value.
+        path_id: Identifier of the path to retrieve or evaluate.
+    
+    Returns:
+        Evaluate policy result.
+
+    """
     _, trajectories = evaluate_policy_on_paths(env, policy, path_ids=[path_id])
     return {"method": method, "infos": trajectories[0]["infos"]}
 
@@ -266,7 +285,19 @@ def _perfect_foresight_trajectory(
     storage_params: Any,
     lambda_terminal: float,
 ) -> dict[str, Any]:
-    """Returns a step trajectory from the perfect-foresight solution."""
+    """Returns a step trajectory from the perfect-foresight solution.
+    
+    Args:
+        dataset: Path dataset used by the environment or evaluator.
+        split: Dataset split name.
+        path_id: Identifier of the path to retrieve or evaluate.
+        storage_params: Storage params value.
+        lambda_terminal: Lambda terminal value.
+    
+    Returns:
+        Perfect foresight trajectory result.
+
+    """
     path = dataset.get_path(split, path_id)
     initial = float(dataset.get_initial_inventories(split, storage_params.initial_inventory)[path_id])
     result = PerfectForesightBaseline(storage_params, lambda_terminal).solve_path(
@@ -303,7 +334,20 @@ def _perfect_foresight_trajectory(
 
 
 def _load_rl_model(algorithm_name: str, model_path: Path, env: GasStorageEnv) -> Any:
-    """Loads a saved Stable-Baselines3 model."""
+    """Loads a saved Stable-Baselines3 model.
+    
+    Args:
+        algorithm_name: Algorithm name value.
+        model_path: Model path value.
+        env: Environment used for rollout or training.
+    
+    Returns:
+        Load rl model result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if algorithm_name == "ppo":
         from stable_baselines3 import PPO
 
@@ -320,7 +364,13 @@ def _load_rl_model(algorithm_name: str, model_path: Path, env: GasStorageEnv) ->
 
 
 def _save(figure: plt.Figure, path: Path) -> None:
-    """Saves and closes a Matplotlib figure."""
+    """Saves and closes a Matplotlib figure.
+    
+    Args:
+        figure: Figure value.
+        path: Filesystem path to read from or write to.
+
+    """
     figure.savefig(path, dpi=160)
     plt.close(figure)
 

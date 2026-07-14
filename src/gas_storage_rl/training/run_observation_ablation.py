@@ -96,7 +96,17 @@ def build_frozen_observation_ablation_environments(
     seed: int,
     observation_features: dict[str, bool] | None = None,
 ) -> tuple[GasStorageEnv, GasStorageEnv, StorageParams]:
-    """Builds train and validation environments from fixed deterministic episodes."""
+    """Builds train and validation environments from fixed deterministic episodes.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        seed: Random seed for deterministic behavior.
+        observation_features: Observation features value.
+    
+    Returns:
+        Computed result.
+
+    """
     ablation_config = config.get("observation_ablation_config", {})
     env_config = config["environment_config"]
     episode_length = int(env_config["episode_length"])
@@ -162,7 +172,19 @@ def solve_frozen_oracles(
     env: GasStorageEnv,
     params: StorageParams,
 ) -> list[dict[str, Any]]:
-    """Solves perfect-foresight references for all frozen validation episodes."""
+    """Solves perfect-foresight references for all frozen validation episodes.
+    
+    Args:
+        env: Environment used for rollout or training.
+        params: Params value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        RuntimeError: If the requested operation cannot be completed.
+
+    """
     terminal_lambda = max(env.lambda_terminal, 1_000_000.0)
     baseline = PerfectForesightBaseline(params, terminal_lambda)
     oracles = []
@@ -197,7 +219,23 @@ def run_observation_ablation(
     n_seeds: int | None = None,
     output_dir: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Runs observation-feature ablations on the frozen deterministic benchmark."""
+    """Runs observation-feature ablations on the frozen deterministic benchmark.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        algorithms: Algorithm names to configure or evaluate.
+        variants: Variants value.
+        total_timesteps: Total timesteps value.
+        n_seeds: Number of seed repetitions.
+        output_dir: Output dir value.
+    
+    Returns:
+        Observation ablation summary.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     _validate_algorithms(algorithms)
     training_config = config["training_config"]
     evaluation_config = config["evaluation_config"]
@@ -315,7 +353,16 @@ def run_observation_ablation(
 
 
 def _deterministic_price_path(start_date: str, episode_length: int) -> np.ndarray:
-    """Returns one fixed seasonal price path with deterministic local events."""
+    """Returns one fixed seasonal price path with deterministic local events.
+    
+    Args:
+        start_date: Start date value.
+        episode_length: Episode length value.
+    
+    Returns:
+        Deterministic price path result.
+
+    """
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     prices = []
     event_shocks = {15: -8.0, 35: 12.0, 60: -7.0, 75: 10.0}
@@ -332,6 +379,15 @@ def _deterministic_price_path(start_date: str, episode_length: int) -> np.ndarra
 def _variant_definitions(
     ablation_config: dict[str, Any],
 ) -> dict[str, dict[str, bool]]:
+    """Builds complete observation-feature masks for each ablation variant.
+
+    Args:
+        ablation_config: Observation ablation section from the experiment config.
+
+    Returns:
+        Mapping from variant name to a full feature mask.
+
+    """
     variants = ablation_config.get("variants", DEFAULT_VARIANTS)
     return {
         name: {**DEFAULT_OBSERVATION_FEATURES, **dict(mask)}
@@ -342,6 +398,15 @@ def _variant_definitions(
 def _mean_terminal_feasibility_clipped_actions(
     trajectories: list[dict[str, Any]],
 ) -> float:
+    """Computes the mean number of terminal feasibility clips per trajectory.
+
+    Args:
+        trajectories: Evaluation trajectories with per-step info dictionaries.
+
+    Returns:
+        Average count of terminal feasibility clipping events.
+
+    """
     counts = [
         sum(bool(info["terminal_feasibility_clipped"]) for info in trajectory["infos"])
         for trajectory in trajectories
@@ -357,6 +422,20 @@ def _aggregate_ablation_summary(
     evaluation_config: dict[str, Any],
     oracle: dict[str, Any],
 ) -> dict[str, Any]:
+    """Aggregates per-run ablation metrics into pass/fail summaries.
+
+    Args:
+        runs: Flat list of run-level metrics.
+        variants: Ablation variant names included in the experiment.
+        algorithms: Algorithm names evaluated for each variant.
+        n_seeds: Number of seeds attempted per variant and algorithm.
+        evaluation_config: Threshold configuration for pass/fail decisions.
+        oracle: Perfect-foresight reference metrics.
+
+    Returns:
+        Nested summary containing per-variant metrics and an overall pass flag.
+
+    """
     configured_minimum = int(
         evaluation_config.get("minimum_successful_seeds", min(2, n_seeds))
     )
@@ -409,6 +488,14 @@ def _plot_ablation_learning_curves(
     runs: list[dict[str, Any]],
     oracle_return: float,
 ) -> None:
+    """Plots oracle-normalized learning curves for all ablation runs.
+
+    Args:
+        group_dir: Root directory containing per-run evaluation CSV files.
+        runs: Flat list of run-level metadata used to locate CSV files.
+        oracle_return: Reference return used to normalize evaluation returns.
+
+    """
     figure, axis = plt.subplots()
     for run in runs:
         evaluation_path = (
@@ -447,7 +534,12 @@ def _is_leap_year(year: int) -> bool:
 
 
 def main() -> None:
-    """Runs the observation ablation diagnostic from the command line."""
+    """Runs the observation ablation diagnostic from the command line.
+    
+    Raises:
+        SystemExit: If the operation fails.
+
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/sanity_observation_ablation.yaml")
     parser.add_argument(

@@ -6,7 +6,18 @@ from typing import Any
 
 
 def _resolve_activation_fn(name: str) -> Any:
-    """Returns a PyTorch activation class for a config-safe activation name."""
+    """Returns a PyTorch activation class for a config-safe activation name.
+    
+    Args:
+        name: Name value.
+    
+    Returns:
+        Resolve activation fn result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     import torch.nn as nn
 
     activation_functions = {
@@ -22,7 +33,12 @@ def _resolve_activation_fn(name: str) -> Any:
 
 
 def _normalize_policy_kwargs(agent_config: dict[str, Any]) -> None:
-    """Converts JSON-safe policy kwargs into SB3 constructor objects."""
+    """Converts JSON-safe policy kwargs into SB3 constructor objects.
+    
+    Args:
+        agent_config: Agent config value.
+
+    """
     policy_kwargs = agent_config.get("policy_kwargs")
     if not isinstance(policy_kwargs, dict):
         return
@@ -34,7 +50,16 @@ def _normalize_policy_kwargs(agent_config: dict[str, Any]) -> None:
 
 
 def _normalize_action_noise(agent_config: dict[str, Any], env: Any) -> None:
-    """Converts JSON-safe action-noise config into a TD3 action-noise object."""
+    """Converts JSON-safe action-noise config into a TD3 action-noise object.
+    
+    Args:
+        agent_config: Agent config value.
+        env: Environment used for rollout or training.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     action_noise = agent_config.get("action_noise")
     if action_noise is None or not isinstance(action_noise, dict):
         return
@@ -59,15 +84,19 @@ def make_sb3_agent(
     seed: int = 0,
 ) -> Any:
     """Creates an initialized SB3 model.
-
+    
     Args:
         algorithm_name: One of ``ppo``, ``sac``, or ``td3``.
         env: Gymnasium-compatible environment.
         agent_config: Hyperparameter dictionary passed to the SB3 constructor.
         seed: Agent seed.
-
+    
     Returns:
         Stable-Baselines3 model instance.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     agent_config = dict(agent_config or {})
     _normalize_policy_kwargs(agent_config)

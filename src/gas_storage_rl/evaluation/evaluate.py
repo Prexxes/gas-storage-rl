@@ -15,7 +15,19 @@ def evaluate_policy_on_paths(
     deterministic: bool = True,
     total_training_env_steps: int = 0,
 ) -> tuple[dict, list[dict]]:
-    """Evaluates a policy on fixed path ids."""
+    """Evaluates a policy on fixed path ids.
+    
+    Args:
+        env: Environment used for rollout or training.
+        policy: Policy value.
+        path_ids: Path ids value.
+        deterministic: Deterministic value.
+        total_training_env_steps: Total training env steps value.
+    
+    Returns:
+        Evaluation metrics and collected trajectories.
+
+    """
     n_paths = len(env.dataset.get_paths(env.split))
     selected = path_ids if path_ids is not None else list(range(n_paths))
     episode_summaries = []

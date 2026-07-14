@@ -34,7 +34,12 @@ class PriceGeneratorConfig:
     params: dict[str, Any] = field(default_factory=default_price_parameters)
 
     def __post_init__(self) -> None:
-        """Validates rolling-window and inventory-distribution parameters."""
+        """Validates rolling-window and inventory-distribution parameters.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         if self.storage_capacity <= 0.0:
             raise ValueError("storage_capacity must be positive")
         if not 0.0 <= self.initial_inventory_mean_fraction <= 1.0:
@@ -46,7 +51,12 @@ class PriceGeneratorConfig:
 
     @property
     def simulation_length(self) -> int:
-        """Returns the stored raw-path length used for rolling episodes."""
+        """Returns the stored raw-path length used for rolling episodes.
+        
+        Returns:
+            Number of simulated time steps including rollout padding.
+
+        """
         max_start_offset = (
             self.episode_length - 1
             if self.max_start_offset is None
@@ -63,7 +73,7 @@ def generate_price_paths(
     params: dict[str, Any] | None = None,
 ) -> np.ndarray:
     """Generates synthetic or historically calibrated spot price paths.
-
+    
     Args:
         environment_name: One of ``deterministic``, ``ou``, ``jump``,
             ``historical_deterministic``, ``historical_ou``,
@@ -72,9 +82,13 @@ def generate_price_paths(
         episode_length: Number of days.
         seed: Random seed.
         params: Optional process parameters.
-
+    
     Returns:
         Positive price matrix with shape ``(n_paths, episode_length)``.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     process_params = default_price_parameters()
     if params:
@@ -116,7 +130,19 @@ def generate_additive_price_paths(
     seed: int,
     params: dict[str, Any],
 ) -> np.ndarray:
-    """Generates additive synthetic price paths that may become negative."""
+    """Generates additive synthetic price paths that may become negative.
+    
+    Args:
+        environment_name: Environment name value.
+        n_paths: Number of price paths to generate or evaluate.
+        episode_length: Episode length value.
+        seed: Random seed for deterministic behavior.
+        params: Params value.
+    
+    Returns:
+        Computed result.
+
+    """
     days = np.arange(episode_length, dtype=np.float64)
     seasonal = params["seasonal_level"] + params["seasonal_amplitude"] * np.sin(
         2.0 * np.pi * days / params["seasonal_period"]
@@ -167,6 +193,7 @@ def generate_calibrated_price_paths(
 
     Returns:
         Positive price matrix with shape ``(n_paths, episode_length)``.
+
     """
     rng = np.random.default_rng(seed)
     seasonal = calibrated_monthly_log_curve(
@@ -209,7 +236,23 @@ def calibrated_monthly_log_curve(
     method: str = "fourier",
     fourier_harmonics: int = 2,
 ) -> np.ndarray:
-    """Creates a daily log seasonal curve from calibrated monthly values."""
+    """Creates a daily log seasonal curve from calibrated monthly values.
+    
+    Args:
+        episode_length: Episode length value.
+        base_log_price: Base log price value.
+        monthly_log_seasonality: Monthly log seasonality value.
+        start_date: Start date value.
+        method: Method value.
+        fourier_harmonics: Fourier harmonics value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if len(monthly_log_seasonality) != 12:
         raise ValueError("monthly_log_seasonality must contain exactly 12 values")
     dates = pd.date_range(start=start_date, periods=episode_length, freq="D")
@@ -232,7 +275,19 @@ def _simulate_ar1_residuals(
     volatility: float,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Simulates centered AR(1) residuals."""
+    """Simulates centered AR(1) residuals.
+    
+    Args:
+        n_paths: Number of price paths to generate or evaluate.
+        episode_length: Episode length value.
+        phi: Phi value.
+        volatility: Volatility value.
+        rng: Random number generator used for deterministic sampling.
+    
+    Returns:
+        Simulate ar1 residuals result.
+
+    """
     residuals = np.zeros((n_paths, episode_length), dtype=np.float64)
     if episode_length <= 1 or volatility <= 0.0:
         return residuals
@@ -250,7 +305,20 @@ def _simulate_calibrated_jumps(
     jump_std: float,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Simulates calibrated sparse additive log-price jumps."""
+    """Simulates calibrated sparse additive log-price jumps.
+    
+    Args:
+        n_paths: Number of price paths to generate or evaluate.
+        episode_length: Episode length value.
+        jump_probability: Jump probability value.
+        jump_mean: Jump mean value.
+        jump_std: Jump std value.
+        rng: Random number generator used for deterministic sampling.
+    
+    Returns:
+        Simulate calibrated jumps result.
+
+    """
     jumps = np.zeros((n_paths, episode_length), dtype=np.float64)
     if jump_probability <= 0.0:
         return jumps
@@ -263,7 +331,16 @@ def _simulate_calibrated_jumps(
 
 
 def split_seeds(dataset_seed: int, include_pretrain: bool = False) -> dict[str, int]:
-    """Returns disjoint deterministic seeds for dataset splits."""
+    """Returns disjoint deterministic seeds for dataset splits.
+    
+    Args:
+        dataset_seed: Dataset seed value.
+        include_pretrain: Include pretrain value.
+    
+    Returns:
+        Deterministic seed mapping by split.
+
+    """
     seeds = {
         "train": int(dataset_seed),
         "validation": int(dataset_seed + 1_000_003),
@@ -278,7 +355,15 @@ def split_seeds(dataset_seed: int, include_pretrain: bool = False) -> dict[str, 
 
 
 def generate_dataset(config: PriceGeneratorConfig) -> dict[str, np.ndarray]:
-    """Generates pretrain, train, validation, and test price paths."""
+    """Generates pretrain, train, validation, and test price paths.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Generated price path dataset by split.
+
+    """
     include_pretrain = config.n_pretrain_paths > 0
     seeds = split_seeds(config.dataset_seed, include_pretrain=include_pretrain)
     counts = {

@@ -28,6 +28,7 @@ def seasonal_log_curve(
 
     Returns:
         Array of seasonal log-prices with shape ``(episode_length,)``.
+
     """
     days = np.arange(episode_length, dtype=np.float64)
     seasonal = amplitude * np.cos(2.0 * np.pi * days / annual_period + phase)
@@ -42,7 +43,12 @@ class MonthlySeasonality:
     monthly_log_adjustments: tuple[float, ...]
 
     def __post_init__(self) -> None:
-        """Validates monthly adjustment shape."""
+        """Validates monthly adjustment shape.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         if len(self.monthly_log_adjustments) != 12:
             raise ValueError("monthly_log_adjustments must contain exactly 12 values")
 
@@ -53,15 +59,19 @@ class MonthlySeasonality:
         fourier_harmonics: int = 2,
     ) -> np.ndarray:
         """Returns seasonal log-prices for the provided dates.
-
+        
         Args:
             dates: Dates at which to evaluate the seasonal curve.
             method: Either ``fourier`` for a smooth periodic curve or ``step``
                 for calendar-month constants.
             fourier_harmonics: Number of Fourier harmonics used for smoothing.
-
+        
         Returns:
             Seasonal log-price array with one value per input date.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
         """
         adjustments = np.asarray(self.monthly_log_adjustments, dtype=np.float64)
         if method == "step":
@@ -76,7 +86,12 @@ class MonthlySeasonality:
         )
 
     def as_params(self) -> dict[str, float | list[float]]:
-        """Serializes the seasonality for config metadata."""
+        """Serializes the seasonality for config metadata.
+        
+        Returns:
+            Serializable parameter dictionary.
+
+        """
         return {
             "base_price": float(np.exp(self.base_log_price)),
             "base_log_price": float(self.base_log_price),
@@ -92,12 +107,16 @@ def fit_monthly_log_seasonality(
     monthly_prices: HistoricalPriceSeries,
 ) -> MonthlySeasonality:
     """Fits a zero-mean monthly log-price seasonality curve.
-
+    
     Args:
         monthly_prices: Monthly calibration prices.
-
+    
     Returns:
         Estimated monthly log seasonality.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     data = monthly_prices.data
     log_prices = np.log(data[monthly_prices.price_column].to_numpy(dtype=np.float64))
@@ -125,14 +144,18 @@ def evaluate_fourier_monthly_seasonality(
     harmonics: int = 2,
 ) -> np.ndarray:
     """Evaluates a smooth periodic Fourier curve fitted to monthly values.
-
+    
     Args:
         dates: Dates at which to evaluate the seasonal adjustment.
         monthly_log_adjustments: Twelve zero-mean monthly log adjustments.
         harmonics: Number of sine/cosine harmonics.
-
+    
     Returns:
         Smooth daily seasonal log adjustments.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     if len(monthly_log_adjustments) != 12:
         raise ValueError("monthly_log_adjustments must contain exactly 12 values")
@@ -156,7 +179,16 @@ def evaluate_fourier_monthly_seasonality(
 
 
 def _fourier_design(fractions: np.ndarray, harmonics: int) -> np.ndarray:
-    """Builds a Fourier design matrix for annual fractions."""
+    """Builds a Fourier design matrix for annual fractions.
+    
+    Args:
+        fractions: Fractions value.
+        harmonics: Harmonics value.
+    
+    Returns:
+        Fourier design result.
+
+    """
     columns = [np.ones_like(fractions, dtype=np.float64)]
     for harmonic in range(1, harmonics + 1):
         angle = 2.0 * np.pi * harmonic * fractions

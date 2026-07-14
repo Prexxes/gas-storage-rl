@@ -170,7 +170,20 @@ def main() -> None:
 
 
 def _load_model(algorithm_name: str, model_path: Path, env: GasStorageEnv):
-    """Loads a saved Stable-Baselines3 model."""
+    """Loads a saved Stable-Baselines3 model.
+    
+    Args:
+        algorithm_name: Algorithm name value.
+        model_path: Model path value.
+        env: Environment used for rollout or training.
+    
+    Returns:
+        Load model result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if algorithm_name == "ppo":
         from stable_baselines3 import PPO
 
@@ -187,7 +200,16 @@ def _load_model(algorithm_name: str, model_path: Path, env: GasStorageEnv):
 
 
 def _model_path(run_dir: Path, model_name: str) -> Path:
-    """Returns the model path for a model selector."""
+    """Returns the model path for a model selector.
+    
+    Args:
+        run_dir: Run dir value.
+        model_name: Model name value.
+    
+    Returns:
+        Model path result.
+
+    """
     if model_name == "best":
         return run_dir / "best_validation_model.zip"
     if model_name == "risk_adjusted":
@@ -196,7 +218,13 @@ def _model_path(run_dir: Path, model_name: str) -> Path:
 
 
 def _save(figure: plt.Figure, path: Path) -> None:
-    """Saves and closes a Matplotlib figure."""
+    """Saves and closes a Matplotlib figure.
+    
+    Args:
+        figure: Figure value.
+        path: Filesystem path to read from or write to.
+
+    """
     figure.tight_layout()
     figure.savefig(path, dpi=160)
     plt.close(figure)

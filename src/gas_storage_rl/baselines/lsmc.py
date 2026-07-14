@@ -22,7 +22,21 @@ def _features(
     target_inventory: np.ndarray,
     price_normalizer: float,
 ) -> np.ndarray:
-    """Builds polynomial regression features up to degree two."""
+    """Builds polynomial regression features up to degree two.
+    
+    Args:
+        storage: Storage value.
+        price: Price value.
+        time_fraction: Time fraction value.
+        capacity: Capacity value.
+        calendar_angles: Calendar angles value.
+        target_inventory: Target inventory value.
+        price_normalizer: Price normalizer value.
+    
+    Returns:
+        Features result.
+
+    """
     normalized_storage = storage / capacity
     normalized_price = price / max(float(price_normalizer), 1e-8)
     normalized_target = target_inventory / capacity
@@ -51,7 +65,16 @@ def _features(
 
 
 def _calendar_angles(start_dates: list[date], step: int) -> np.ndarray:
-    """Returns cyclic day-of-year angles for one relative episode step."""
+    """Returns cyclic day-of-year angles for one relative episode step.
+    
+    Args:
+        start_dates: Start dates value.
+        step: Step value.
+    
+    Returns:
+        Calendar angles result.
+
+    """
     angles = []
     for start_date in start_dates:
         current_date = start_date + timedelta(days=step)
@@ -63,7 +86,15 @@ def _calendar_angles(start_dates: list[date], step: int) -> np.ndarray:
 
 
 def _is_leap_year(year: int) -> bool:
-    """Returns whether a Gregorian calendar year is a leap year."""
+    """Returns whether a Gregorian calendar year is a leap year.
+    
+    Args:
+        year: Year value.
+    
+    Returns:
+        Is leap year result.
+
+    """
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
@@ -90,7 +121,21 @@ class LSMCBenchmark:
         initial_inventories: np.ndarray | None = None,
         target_inventories: np.ndarray | None = None,
     ) -> "LSMCBenchmark":
-        """Fits continuation value regressions on training paths."""
+        """Fits continuation value regressions on training paths.
+        
+        Args:
+            train_paths: Train paths value.
+            start_dates: Start dates value.
+            initial_inventories: Initial inventories value.
+            target_inventories: Target inventories value.
+        
+        Returns:
+            Fitted model or policy instance.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         n_paths, horizon = train_paths.shape
         if self.n_inventory_levels < 2:
             raise ValueError("n_inventory_levels must be at least 2")
@@ -177,7 +222,20 @@ class LSMCBenchmark:
         start_date: date | None = None,
         target_inventory: float | None = None,
     ) -> float:
-        """Chooses the best grid action using fitted continuation estimates."""
+        """Chooses the best grid action using fitted continuation estimates.
+        
+        Args:
+            storage_level: Storage level value.
+            price: Price value.
+            current_step: Current step value.
+            horizon: Horizon value.
+            start_date: Start date value.
+            target_inventory: Target inventory value.
+        
+        Returns:
+            Action selected for the current path state.
+
+        """
         target = (
             self.storage_params.target_terminal_inventory
             if target_inventory is None
@@ -229,7 +287,21 @@ class LSMCBenchmark:
         initial_inventories: np.ndarray | None = None,
         target_inventories: np.ndarray | None = None,
     ) -> dict[str, float]:
-        """Evaluates the fitted LSMC policy on fixed paths."""
+        """Evaluates the fitted LSMC policy on fixed paths.
+        
+        Args:
+            paths: Price paths or filesystem paths to process.
+            start_dates: Start dates value.
+            initial_inventories: Initial inventories value.
+            target_inventories: Target inventories value.
+        
+        Returns:
+            Evaluation metrics dictionary.
+        
+        Raises:
+            ValueError: If an input value or configuration is invalid.
+
+        """
         if start_dates is None:
             start_dates = [date(2001, 1, 1)] * len(paths)
         if len(start_dates) != len(paths):
@@ -291,7 +363,19 @@ def _clip_action(
     remaining_steps_after_action: int,
     target_inventory: float,
 ) -> float:
-    """Clips LSMC candidate actions exactly like the environment executes them."""
+    """Clips LSMC candidate actions exactly like the environment executes them.
+    
+    Args:
+        action: Action value.
+        storage_level: Storage level value.
+        params: Params value.
+        remaining_steps_after_action: Remaining steps after action value.
+        target_inventory: Target inventory value.
+    
+    Returns:
+        Clip action result.
+
+    """
     return _scalar_clip_action(
         action,
         storage_level,
@@ -308,7 +392,19 @@ def _clip_actions(
     remaining_steps_after_action: int,
     target_inventories: np.ndarray,
 ) -> np.ndarray:
-    """Vectorizes environment-equivalent action clipping for LSMC candidates."""
+    """Vectorizes environment-equivalent action clipping for LSMC candidates.
+    
+    Args:
+        action: Action value.
+        storage_levels: Storage levels value.
+        params: Params value.
+        remaining_steps_after_action: Remaining steps after action value.
+        target_inventories: Target inventories value.
+    
+    Returns:
+        Clip actions result.
+
+    """
     storage = np.asarray(storage_levels, dtype=np.float64)
     target = np.asarray(target_inventories, dtype=np.float64)
     normal_lower = np.maximum(-params.withdrawal_rate, -storage)
@@ -341,7 +437,19 @@ def _scalar_clip_action(
     remaining_steps_after_action: int,
     target_inventory: float,
 ) -> float:
-    """Returns scalar environment clipping for tests and implementation parity."""
+    """Returns scalar environment clipping for tests and implementation parity.
+    
+    Args:
+        action: Action value.
+        storage_level: Storage level value.
+        params: Params value.
+        remaining_steps_after_action: Remaining steps after action value.
+        target_inventory: Target inventory value.
+    
+    Returns:
+        Scalar clip action result.
+
+    """
     return clip_storage_action_to_terminal_feasibility(
         requested_action=float(action),
         storage_level=float(storage_level),
@@ -356,7 +464,20 @@ def _inventory_values(
     n_paths: int,
     default: float,
 ) -> np.ndarray:
-    """Returns a validated inventory vector for path-wise LSMC state."""
+    """Returns a validated inventory vector for path-wise LSMC state.
+    
+    Args:
+        values: Numeric values to transform or summarize.
+        n_paths: Number of price paths to generate or evaluate.
+        default: Default value.
+    
+    Returns:
+        Inventory values result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if values is None:
         return np.full(n_paths, default, dtype=np.float64)
     array = np.asarray(values, dtype=np.float64)

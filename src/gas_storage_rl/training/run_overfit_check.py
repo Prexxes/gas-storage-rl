@@ -55,7 +55,16 @@ def build_overfit_environments(
     config: dict[str, Any],
     seed: int,
 ) -> tuple[GasStorageEnv, GasStorageEnv, StorageParams]:
-    """Builds train and evaluation environments containing the same fixed path."""
+    """Builds train and evaluation environments containing the same fixed path.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        seed: Random seed for deterministic behavior.
+    
+    Returns:
+        Computed result.
+
+    """
     prices = OVERFIT_PRICES.reshape(1, -1)
     dataset = PathDataset(
         {"train": prices.copy(), "validation": prices.copy()},
@@ -87,7 +96,19 @@ def solve_overfit_oracle(
     params: StorageParams,
     lambda_terminal: float,
 ) -> dict[str, Any]:
-    """Solves and validates the perfect-foresight reference episode."""
+    """Solves and validates the perfect-foresight reference episode.
+    
+    Args:
+        params: Params value.
+        lambda_terminal: Lambda terminal value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        RuntimeError: If the requested operation cannot be completed.
+
+    """
     result = PerfectForesightBaseline(params, lambda_terminal).solve_path(
         OVERFIT_PRICES,
         initial_inventory=params.initial_inventory,
@@ -114,7 +135,18 @@ def assess_run(
     minimum_oracle_ratio: float,
     maximum_terminal_deviation: float,
 ) -> dict[str, Any]:
-    """Computes the pass/fail result for one algorithm seed."""
+    """Computes the pass/fail result for one algorithm seed.
+    
+    Args:
+        final_metrics: Final metrics value.
+        oracle_return: Oracle return value.
+        minimum_oracle_ratio: Minimum oracle ratio value.
+        maximum_terminal_deviation: Maximum terminal deviation value.
+    
+    Returns:
+        Computed result.
+
+    """
     final_return = float(final_metrics["mean_return_raw"])
     oracle_ratio = final_return / oracle_return
     terminal_deviation = float(final_metrics["mean_terminal_deviation"])
@@ -138,7 +170,14 @@ class OverfitEvaluationCallback(BaseCallback):
         eval_freq: int,
         output_dir: Path,
     ) -> None:
-        """Initializes the periodic evaluator."""
+        """Initializes the periodic evaluator.
+        
+        Args:
+            eval_env: Environment used for deterministic evaluation.
+            eval_freq: Eval freq value.
+            output_dir: Output dir value.
+
+        """
         super().__init__()
         self.eval_env = eval_env
         self.eval_freq = int(eval_freq)
@@ -156,7 +195,12 @@ class OverfitEvaluationCallback(BaseCallback):
         return True
 
     def evaluate(self) -> dict[str, Any]:
-        """Runs and records one update-free deterministic evaluation episode."""
+        """Runs and records one update-free deterministic evaluation episode.
+        
+        Returns:
+            Evaluation metrics dictionary.
+
+        """
         metrics, _ = evaluate_policy_on_paths(
             self.eval_env,
             self.model,
@@ -181,7 +225,22 @@ def run_overfit_check(
     n_seeds: int | None = None,
     output_dir: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Runs the deterministic memorization diagnostic."""
+    """Runs the deterministic memorization diagnostic.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        algorithms: Algorithm names to configure or evaluate.
+        total_timesteps: Total timesteps value.
+        n_seeds: Number of seed repetitions.
+        output_dir: Output dir value.
+    
+    Returns:
+        Overfit diagnostic summary.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     _validate_algorithms(algorithms)
     training_config = config["training_config"]
     evaluation_config = config["evaluation_config"]
@@ -297,6 +356,22 @@ def _aggregate_summary(
     oracle: dict[str, Any],
     evaluation_config: dict[str, Any],
 ) -> dict[str, Any]:
+    """Aggregates overfit-check runs into algorithm-level pass/fail summaries.
+
+    Args:
+        runs: Flat list of run-level metrics.
+        algorithms: Algorithm names evaluated in the overfit check.
+        n_seeds: Number of seeds attempted per algorithm.
+        oracle: Perfect-foresight reference metrics.
+        evaluation_config: Threshold configuration for pass/fail decisions.
+
+    Returns:
+        Summary containing per-algorithm metrics and an overall pass flag.
+
+    Raises:
+        ValueError: If the configured minimum successful seed count is invalid.
+
+    """
     configured_minimum = int(
         evaluation_config.get("minimum_successful_seeds", min(2, n_seeds))
     )
@@ -338,6 +413,17 @@ def _first_success_step(
     oracle_return: float,
     minimum_ratio: float,
 ) -> int | None:
+    """Finds the first evaluation step that reaches the oracle-ratio target.
+
+    Args:
+        rows: Evaluation CSV rows ordered by training step.
+        oracle_return: Reference return used to normalize evaluation returns.
+        minimum_ratio: Minimum normalized return considered successful.
+
+    Returns:
+        First matching training step, or None if no evaluation reaches the target.
+
+    """
     for row in rows:
         if float(row["mean_return_raw"]) / oracle_return >= minimum_ratio:
             return int(row["total_training_env_steps"])
@@ -345,11 +431,30 @@ def _first_success_step(
 
 
 def _seed_for_run(master_seed: int, seed_index: int) -> int:
+    """Derives a deterministic child seed for a repeated diagnostic run.
+
+    Args:
+        master_seed: Root seed from the experiment config.
+        seed_index: Zero-based repeat index.
+
+    Returns:
+        Unsigned 32-bit seed value as a Python integer.
+
+    """
     sequence = np.random.SeedSequence([master_seed, seed_index])
     return int(sequence.generate_state(1, dtype=np.uint32)[0])
 
 
 def _create_output_dir(base_dir: str | Path) -> Path:
+    """Creates a timestamped output directory without overwriting prior runs.
+
+    Args:
+        base_dir: Parent directory for overfit-check outputs.
+
+    Returns:
+        Newly created output directory.
+
+    """
     base = Path(base_dir)
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     output = base / timestamp
@@ -367,6 +472,15 @@ def _plot_learning_curves(
     oracle_return: float,
     minimum_oracle_ratio: float,
 ) -> None:
+    """Plots oracle-normalized learning curves for all overfit-check runs.
+
+    Args:
+        group_dir: Root directory containing per-run evaluation CSV files.
+        runs: Flat list of run-level metadata used to locate CSV files.
+        oracle_return: Reference return used to normalize evaluation returns.
+        minimum_oracle_ratio: Success threshold drawn on the plot.
+
+    """
     figure, axis = plt.subplots()
     for run in runs:
         evaluation_path = (
@@ -401,6 +515,15 @@ def _plot_learning_curves(
 
 
 def _validate_algorithms(algorithms: list[str]) -> None:
+    """Validates that all requested algorithms are supported.
+
+    Args:
+        algorithms: Algorithm names requested for the diagnostic run.
+
+    Raises:
+        ValueError: If no algorithm is provided or any name is unsupported.
+
+    """
     invalid = sorted(set(algorithms) - set(SUPPORTED_ALGORITHMS))
     if invalid:
         raise ValueError(f"Unsupported algorithms: {', '.join(invalid)}")
@@ -424,7 +547,12 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    """Runs the overfitting diagnostic from the command line."""
+    """Runs the overfitting diagnostic from the command line.
+    
+    Raises:
+        SystemExit: If the operation fails.
+
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/sanity_overfit.yaml")
     parser.add_argument(

@@ -33,6 +33,7 @@ def clip_storage_action(
 
     Returns:
         The feasible executed action.
+
     """
     lower_bound = max(-params.withdrawal_rate, -storage_level)
     upper_bound = min(params.injection_rate, params.capacity - storage_level)
@@ -61,6 +62,7 @@ def clip_storage_action_to_terminal_feasibility(
 
     Returns:
         The executed action after physical and terminal-reachability clipping.
+
     """
     normal_lower_bound = max(-params.withdrawal_rate, -storage_level)
     normal_upper_bound = min(params.injection_rate, params.capacity - storage_level)

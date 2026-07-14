@@ -31,12 +31,28 @@ from gas_storage_rl.training.config import (
 
 
 def _json_default(value: Any) -> str:
-    """JSON fallback serializer for run fingerprints."""
+    """JSON fallback serializer for run fingerprints.
+    
+    Args:
+        value: Value value.
+    
+    Returns:
+        Json default result.
+
+    """
     return str(value)
 
 
 def run_config_fingerprint(config: dict[str, Any]) -> str:
-    """Returns a stable fingerprint for a rerun-relevant run configuration."""
+    """Returns a stable fingerprint for a rerun-relevant run configuration.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Computed result.
+
+    """
     normalized = copy.deepcopy(config)
     normalized.pop("experiment_group_id", None)
     normalized.pop("logging_config", None)
@@ -53,7 +69,16 @@ def find_completed_run(
     base_dir: str | Path,
     effective_config: dict[str, Any],
 ) -> Path | None:
-    """Finds a completed run with the same rerun-relevant configuration."""
+    """Finds a completed run with the same rerun-relevant configuration.
+    
+    Args:
+        base_dir: Parent directory for generated artifacts.
+        effective_config: Effective config value.
+    
+    Returns:
+        Computed result.
+
+    """
     run_base_dir = Path(base_dir)
     if not run_base_dir.exists():
         return None
@@ -77,7 +102,15 @@ def find_completed_run(
 
 
 def pretrained_policy_reference(pretrained_policy: str | Path) -> str:
-    """Returns the effective policy file reference used by a training run."""
+    """Returns the effective policy file reference used by a training run.
+    
+    Args:
+        pretrained_policy: Pretrained policy value.
+    
+    Returns:
+        Computed result.
+
+    """
     policy_path = Path(pretrained_policy)
     if policy_path.is_dir():
         policy_path = policy_path / "policy_state_dict.pt"
@@ -85,7 +118,19 @@ def pretrained_policy_reference(pretrained_policy: str | Path) -> str:
 
 
 def load_pretrained_policy_state(model: Any, pretrained_policy: str | Path) -> Path:
-    """Loads pretrained SB3 policy weights into a freshly created model."""
+    """Loads pretrained SB3 policy weights into a freshly created model.
+    
+    Args:
+        model: Policy or model used for prediction.
+        pretrained_policy: Pretrained policy value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        FileNotFoundError: If a required input file does not exist.
+
+    """
     policy_path = Path(pretrained_policy_reference(pretrained_policy))
     if not policy_path.exists():
         raise FileNotFoundError(f"Pretrained policy not found: {policy_path}")
@@ -95,7 +140,15 @@ def load_pretrained_policy_state(model: Any, pretrained_policy: str | Path) -> P
 
 
 def _read_evaluation_rows(run_dir: Path) -> list[dict[str, str]]:
-    """Reads periodic and final validation rows for one run."""
+    """Reads periodic and final validation rows for one run.
+    
+    Args:
+        run_dir: Run dir value.
+    
+    Returns:
+        Read evaluation rows result.
+
+    """
     path = run_dir / "evaluations.csv"
     if not path.exists():
         return []
@@ -112,7 +165,20 @@ def run_experiment(
     pretrained_policy: str | Path | None = None,
     rerun: bool = False,
 ) -> dict[str, Any]:
-    """Runs one configured RL experiment and returns its summary."""
+    """Runs one configured RL experiment and returns its summary.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        algorithm: Algorithm name to configure or evaluate.
+        seed_index: Zero-based seed repetition index.
+        experiment_group_id: Experiment group id value.
+        pretrained_policy: Pretrained policy value.
+        rerun: Rerun value.
+    
+    Returns:
+        Run summary and artifact metadata.
+
+    """
     config["agent_config"]["algorithm_name"] = algorithm
     effective_config = build_effective_run_config(config, algorithm, seed_index)
     if pretrained_policy is not None:

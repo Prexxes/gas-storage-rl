@@ -15,12 +15,29 @@ from typing import Any
 
 
 def _json_default(value: Any) -> str:
-    """JSON fallback serializer."""
+    """JSON fallback serializer.
+    
+    Args:
+        value: Value value.
+    
+    Returns:
+        Json default result.
+
+    """
     return str(value)
 
 
 def _safe_run_id_component(value: Any, default: str) -> str:
-    """Returns a filesystem-safe run id component."""
+    """Returns a filesystem-safe run id component.
+    
+    Args:
+        value: Value value.
+        default: Default value.
+    
+    Returns:
+        Safe run id component result.
+
+    """
     text = str(value or default)
     cleaned = "".join(
         character if character.isalnum() or character in {"-", "_"} else "_"
@@ -33,7 +50,13 @@ class ExperimentLogger:
     """Creates run directories and stores config, metrics, and summaries."""
 
     def __init__(self, base_dir: str | Path, config: dict[str, Any]) -> None:
-        """Initializes a persistent run directory."""
+        """Initializes a persistent run directory.
+        
+        Args:
+            base_dir: Parent directory for generated artifacts.
+            config: Experiment configuration dictionary.
+
+        """
         self.base_dir = Path(base_dir)
         self.config = config
         serialized = json.dumps(config, sort_keys=True, default=_json_default)
@@ -55,12 +78,24 @@ class ExperimentLogger:
         self.write_json("config.json", config)
 
     def write_json(self, name: str, payload: dict[str, Any]) -> None:
-        """Writes a JSON file inside the run directory."""
+        """Writes a JSON file inside the run directory.
+        
+        Args:
+            name: Name value.
+            payload: Serializable payload to persist.
+
+        """
         with (self.run_dir / name).open("w", encoding="utf-8") as file:
             json.dump(payload, file, indent=2, default=_json_default)
 
     def append_csv(self, name: str, row: dict[str, Any]) -> None:
-        """Appends one row to a CSV file."""
+        """Appends one row to a CSV file.
+        
+        Args:
+            name: Name value.
+            row: Row value.
+
+        """
         path = self.run_dir / name
         if not path.exists():
             with path.open("w", newline="", encoding="utf-8") as file:
@@ -83,7 +118,12 @@ class ExperimentLogger:
             writer.writerows(rows)
 
     def metadata(self) -> dict[str, Any]:
-        """Returns reproducibility metadata."""
+        """Returns reproducibility metadata.
+        
+        Returns:
+            Computed result.
+
+        """
         try:
             git_commit = subprocess.check_output(
                 ["git", "rev-parse", "HEAD"],
@@ -115,7 +155,15 @@ class ExperimentLogger:
         }
 
     def finalize_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
-        """Adds the run end time and rewrites metadata.json."""
+        """Adds the run end time and rewrites metadata.json.
+        
+        Args:
+            metadata: Metadata payload to persist or enrich.
+        
+        Returns:
+            Computed result.
+
+        """
         finalized = dict(metadata)
         finalized["end_time"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         self.write_json("metadata.json", finalized)

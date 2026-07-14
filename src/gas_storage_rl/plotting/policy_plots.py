@@ -12,7 +12,17 @@ TimeAxis = Literal["episode", "absolute", "day_of_year"]
 
 
 def _matrix(trajectories: list[dict], key: str, n_paths: int) -> np.ndarray:
-    """Extracts a trajectory matrix for an info key."""
+    """Extracts a trajectory matrix for an info key.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        key: Key value.
+        n_paths: Number of price paths to generate or evaluate.
+    
+    Returns:
+        Matrix result.
+
+    """
     return np.array(
         [[info[key] for info in trajectory["infos"]] for trajectory in trajectories[:n_paths]]
     )
@@ -24,7 +34,18 @@ def plot_agent_actions(
     include_mean: bool = True,
     time_axis: TimeAxis = "episode",
 ):
-    """Plots executed action paths."""
+    """Plots executed action paths.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        n_paths: Number of price paths to generate or evaluate.
+        include_mean: Include mean value.
+        time_axis: Time axis value.
+    
+    Returns:
+        Computed result.
+
+    """
     return _line_plot(
         trajectories,
         "executed_action",
@@ -41,7 +62,18 @@ def plot_storage_levels(
     include_mean: bool = True,
     time_axis: TimeAxis = "episode",
 ):
-    """Plots storage level paths."""
+    """Plots storage level paths.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        n_paths: Number of price paths to generate or evaluate.
+        include_mean: Include mean value.
+        time_axis: Time axis value.
+    
+    Returns:
+        Computed result.
+
+    """
     return _line_plot(
         trajectories,
         "storage_level",
@@ -58,7 +90,18 @@ def plot_cumulative_cashflows(
     include_mean: bool = True,
     time_axis: TimeAxis = "episode",
 ):
-    """Plots cumulative raw cashflow paths."""
+    """Plots cumulative raw cashflow paths.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        n_paths: Number of price paths to generate or evaluate.
+        include_mean: Include mean value.
+        time_axis: Time axis value.
+    
+    Returns:
+        Computed result.
+
+    """
     figure, axis = plt.subplots()
     aggregate_values: dict[int, list[float]] = defaultdict(list)
     for trajectory in trajectories[:n_paths]:
@@ -76,7 +119,15 @@ def plot_cumulative_cashflows(
 
 
 def plot_price_action_scatter(trajectories: list[dict]):
-    """Plots gas price against executed action."""
+    """Plots gas price against executed action.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+    
+    Returns:
+        Computed result.
+
+    """
     prices = _matrix(trajectories, "price", len(trajectories)).reshape(-1)
     actions = _matrix(trajectories, "executed_action", len(trajectories)).reshape(-1)
     figure, axis = plt.subplots()
@@ -94,7 +145,20 @@ def _line_plot(
     include_mean: bool,
     time_axis: TimeAxis,
 ):
-    """Creates a reusable trajectory line plot."""
+    """Creates a reusable trajectory line plot.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        key: Key value.
+        ylabel: Ylabel value.
+        n_paths: Number of price paths to generate or evaluate.
+        include_mean: Include mean value.
+        time_axis: Time axis value.
+    
+    Returns:
+        Line plot result.
+
+    """
     figure, axis = plt.subplots()
     aggregate_values: dict[int, list[float]] = defaultdict(list)
     for trajectory in trajectories[:n_paths]:
@@ -111,7 +175,19 @@ def _line_plot(
 
 
 def _time_values(infos: list[dict], time_axis: TimeAxis) -> np.ndarray:
-    """Returns x-axis values for trajectory infos."""
+    """Returns x-axis values for trajectory infos.
+    
+    Args:
+        infos: Per-step environment information dictionaries.
+        time_axis: Time axis value.
+    
+    Returns:
+        Time values result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if time_axis == "episode":
         return np.array([info["current_step"] for info in infos], dtype=np.int64)
     if time_axis == "absolute":
@@ -131,7 +207,18 @@ def _time_values(infos: list[dict], time_axis: TimeAxis) -> np.ndarray:
 
 
 def _time_axis_label(time_axis: TimeAxis) -> str:
-    """Returns a human-readable x-axis label."""
+    """Returns a human-readable x-axis label.
+    
+    Args:
+        time_axis: Time axis value.
+    
+    Returns:
+        Time axis label result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if time_axis == "episode":
         return "Episode timestep"
     if time_axis == "absolute":
@@ -148,7 +235,16 @@ def _plot_values(
     color: str,
     time_axis: TimeAxis,
 ) -> None:
-    """Plots individual trajectory values for the selected time axis."""
+    """Plots individual trajectory values for the selected time axis.
+    
+    Args:
+        axis: Axis value.
+        x_values: X values value.
+        y_values: Y values value.
+        color: Color value.
+        time_axis: Time axis value.
+
+    """
     if time_axis == "day_of_year":
         axis.scatter(x_values, y_values, color=color, alpha=0.15, s=8)
         axis.set_xlim(1, 365)
@@ -161,7 +257,14 @@ def _plot_aggregate(
     aggregate_values: dict[int, list[float]],
     time_axis: TimeAxis,
 ) -> None:
-    """Plots mean or seasonal quantile aggregates."""
+    """Plots mean or seasonal quantile aggregates.
+    
+    Args:
+        axis: Axis value.
+        aggregate_values: Aggregate values value.
+        time_axis: Time axis value.
+
+    """
     x_values = np.array(sorted(aggregate_values), dtype=np.int64)
     if len(x_values) == 0:
         return

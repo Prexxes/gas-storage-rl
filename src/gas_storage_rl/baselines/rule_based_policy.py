@@ -29,7 +29,20 @@ class RuleBasedPolicy:
         withdrawal_rate: float = 1.0,
         target_inventory: float = 0.0,
     ) -> "RuleBasedPolicy":
-        """Creates thresholds from training price quantiles."""
+        """Creates thresholds from training price quantiles.
+        
+        Args:
+            training_prices: Training prices value.
+            capacity: Capacity value.
+            episode_length: Episode length value.
+            injection_rate: Injection rate value.
+            withdrawal_rate: Withdrawal rate value.
+            target_inventory: Target inventory value.
+        
+        Returns:
+            Computed result.
+
+        """
         return cls(
             low_threshold=float(np.quantile(training_prices, 0.3)),
             high_threshold=float(np.quantile(training_prices, 0.7)),
@@ -47,7 +60,18 @@ class RuleBasedPolicy:
         current_step: int,
         target_inventory: float | None = None,
     ) -> float:
-        """Returns a feasible rule action before environment clipping."""
+        """Returns a feasible rule action before environment clipping.
+        
+        Args:
+            storage_level: Storage level value.
+            price: Price value.
+            current_step: Current step value.
+            target_inventory: Target inventory value.
+        
+        Returns:
+            Action selected by the policy.
+
+        """
         target = self.target_inventory if target_inventory is None else target_inventory
         remaining_steps = max(self.episode_length - current_step - 1, 0)
         excess_inventory = storage_level - target
@@ -66,7 +90,16 @@ class RuleBasedPolicy:
         return 0.0
 
     def predict(self, observation: np.ndarray, deterministic: bool = True):
-        """Returns an action compatible with Stable-Baselines3."""
+        """Returns an action compatible with Stable-Baselines3.
+        
+        Args:
+            observation: Observation value.
+            deterministic: Deterministic value.
+        
+        Returns:
+            Predicted action and optional recurrent state.
+
+        """
         del deterministic
         storage_level = float(observation[0] * self.capacity)
         price = float(observation[1] * 50.0)

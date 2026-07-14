@@ -9,13 +9,17 @@ REWARD_SCALE_MULTIPLIERS = [0.25, 0.5, 1.0, 2.0, 4.0]
 
 def suggest_hyperparameters(trial: Any, algorithm: str) -> dict[str, Any]:
     """Suggests JSON-serializable SB3 hyperparameters for one algorithm.
-
+    
     Args:
         trial: Optuna trial-like object.
         algorithm: One of ``ppo``, ``sac``, or ``td3``.
-
+    
     Returns:
         Hyperparameters suitable for ``agent_config[algorithm]``.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     if algorithm == "ppo":
         return suggest_ppo_hyperparameters(trial)
@@ -27,7 +31,15 @@ def suggest_hyperparameters(trial: Any, algorithm: str) -> dict[str, Any]:
 
 
 def suggest_reward_scale_multiplier(trial: Any) -> float:
-    """Suggests the shared reward-scale multiplier for one HPO trial."""
+    """Suggests the shared reward-scale multiplier for one HPO trial.
+    
+    Args:
+        trial: Optuna trial object or fixed-trial adapter.
+    
+    Returns:
+        Computed result.
+
+    """
     return float(
         trial.suggest_categorical(
             "reward_scale_multiplier",
@@ -37,7 +49,15 @@ def suggest_reward_scale_multiplier(trial: Any) -> float:
 
 
 def suggest_ppo_hyperparameters(trial: Any) -> dict[str, Any]:
-    """Suggests PPO-specific hyperparameters."""
+    """Suggests PPO-specific hyperparameters.
+    
+    Args:
+        trial: Optuna trial object or fixed-trial adapter.
+    
+    Returns:
+        Computed result.
+
+    """
     n_steps = trial.suggest_categorical("n_steps", [256, 512, 1024, 2048])
     batch_size = trial.suggest_categorical("batch_size", [64, 128, 256])
     clip_range_vf_mode = trial.suggest_categorical(
@@ -87,7 +107,15 @@ def suggest_ppo_hyperparameters(trial: Any) -> dict[str, Any]:
 
 
 def suggest_sac_hyperparameters(trial: Any) -> dict[str, Any]:
-    """Suggests SAC-specific hyperparameters."""
+    """Suggests SAC-specific hyperparameters.
+    
+    Args:
+        trial: Optuna trial object or fixed-trial adapter.
+    
+    Returns:
+        Computed result.
+
+    """
     ent_coef_mode = trial.suggest_categorical("ent_coef_mode", ["auto", "fixed"])
     hyperparameters: dict[str, Any] = {
         "policy": "MlpPolicy",
@@ -135,7 +163,15 @@ def suggest_sac_hyperparameters(trial: Any) -> dict[str, Any]:
 
 
 def suggest_td3_hyperparameters(trial: Any) -> dict[str, Any]:
-    """Suggests TD3-specific hyperparameters."""
+    """Suggests TD3-specific hyperparameters.
+    
+    Args:
+        trial: Optuna trial object or fixed-trial adapter.
+    
+    Returns:
+        Computed result.
+
+    """
     action_noise_mode = trial.suggest_categorical(
         "action_noise_mode",
         ["none", "normal"],
@@ -174,7 +210,12 @@ def suggest_td3_hyperparameters(trial: Any) -> dict[str, Any]:
 
 
 def search_space_description() -> dict[str, Any]:
-    """Returns a human-readable summary of the configured search spaces."""
+    """Returns a human-readable summary of the configured search spaces.
+    
+    Returns:
+        Computed result.
+
+    """
     return {
         "method": "Optuna TPE",
         "direction": "maximize",
@@ -251,7 +292,17 @@ def _suggest_policy_kwargs(
     include_ortho_init: bool = False,
     include_log_std_init: bool = False,
 ) -> dict[str, Any]:
-    """Suggests JSON-safe policy keyword arguments."""
+    """Suggests JSON-safe policy keyword arguments.
+    
+    Args:
+        trial: Optuna trial object or fixed-trial adapter.
+        include_ortho_init: Include ortho init value.
+        include_log_std_init: Include log std init value.
+    
+    Returns:
+        Suggest policy kwargs result.
+
+    """
     net_arch_name = trial.suggest_categorical(
         "net_arch",
         ["small", "medium", "large"],

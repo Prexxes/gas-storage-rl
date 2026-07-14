@@ -7,7 +7,15 @@ import pandas as pd
 
 
 def plot_learning_curve(metrics: pd.DataFrame):
-    """Plots validation return over environment steps."""
+    """Plots validation return over environment steps.
+    
+    Args:
+        metrics: Metrics value.
+    
+    Returns:
+        Computed result.
+
+    """
     figure, axis = plt.subplots()
     step_column = (
         "total_training_env_steps"
@@ -21,7 +29,15 @@ def plot_learning_curve(metrics: pd.DataFrame):
 
 
 def plot_return_distribution(evaluation_results: pd.DataFrame):
-    """Plots return distributions grouped by algorithm or benchmark."""
+    """Plots return distributions grouped by algorithm or benchmark.
+    
+    Args:
+        evaluation_results: Evaluation results value.
+    
+    Returns:
+        Computed result.
+
+    """
     figure, axis = plt.subplots()
     groups = [
         group["episode_return_raw"].to_numpy()

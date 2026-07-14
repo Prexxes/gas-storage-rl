@@ -23,12 +23,28 @@ from gas_storage_rl.training.config import build_environment, load_config
 
 
 def _json_default(value: Any) -> str:
-    """JSON fallback serializer."""
+    """JSON fallback serializer.
+    
+    Args:
+        value: Value value.
+    
+    Returns:
+        Json default result.
+
+    """
     return str(value)
 
 
 def config_hash(config: dict[str, Any]) -> str:
-    """Returns a short stable hash for a loaded configuration."""
+    """Returns a short stable hash for a loaded configuration.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Stable hash for the configuration.
+
+    """
     serialized = json.dumps(config, sort_keys=True, default=_json_default)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:8]
 
@@ -39,7 +55,18 @@ def create_pretraining_run_dir(
     algorithm_name: str,
     hash_value: str,
 ) -> tuple[Path, str]:
-    """Creates a human-readable pretraining run directory."""
+    """Creates a human-readable pretraining run directory.
+    
+    Args:
+        base_dir: Parent directory for generated artifacts.
+        config_name: Human-readable configuration name.
+        algorithm_name: Algorithm name value.
+        hash_value: Hash value value.
+    
+    Returns:
+        Created pretraining run directory.
+
+    """
     safe_config_name = "".join(
         character if character.isalnum() or character in {"-", "_"} else "_"
         for character in config_name
@@ -61,7 +88,17 @@ def load_trajectory_samples(
     capacity: float,
     price_scale: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Builds observation/action pairs from perfect-foresight JSONL trajectories."""
+    """Builds observation/action pairs from perfect-foresight JSONL trajectories.
+    
+    Args:
+        trajectory_path: Trajectory path value.
+        capacity: Capacity value.
+        price_scale: Price scale value.
+    
+    Returns:
+        Computed result.
+
+    """
     trajectories = []
     with Path(trajectory_path).open("r", encoding="utf-8") as file:
         for line in file:
@@ -75,7 +112,18 @@ def load_trajectory_samples(
 
 
 def load_trajectory_rows(trajectory_path: str | Path) -> list[dict[str, Any]]:
-    """Loads serialized perfect-foresight trajectories from a JSONL file."""
+    """Loads serialized perfect-foresight trajectories from a JSONL file.
+    
+    Args:
+        trajectory_path: Trajectory path value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     trajectories = []
     with Path(trajectory_path).open("r", encoding="utf-8") as file:
         for line in file:
@@ -91,7 +139,20 @@ def trajectory_rows_to_samples(
     capacity: float,
     price_scale: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Builds observation/action pairs from perfect-foresight trajectory rows."""
+    """Builds observation/action pairs from perfect-foresight trajectory rows.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        capacity: Capacity value.
+        price_scale: Price scale value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     observations = []
     actions = []
     for trajectory in trajectories:
@@ -133,7 +194,15 @@ def trajectory_rows_to_samples(
 
 
 def _is_leap_year(year: int) -> bool:
-    """Returns whether a Gregorian calendar year is a leap year."""
+    """Returns whether a Gregorian calendar year is a leap year.
+    
+    Args:
+        year: Year value.
+    
+    Returns:
+        Is leap year result.
+
+    """
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
@@ -142,7 +211,20 @@ def predict_actor_actions(
     observations: torch.Tensor,
     algorithm_name: str,
 ) -> torch.Tensor:
-    """Returns differentiable deterministic actor actions."""
+    """Returns differentiable deterministic actor actions.
+    
+    Args:
+        model: Policy or model used for prediction.
+        observations: Observations value.
+        algorithm_name: Algorithm name value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if algorithm_name == "ppo":
         return model.policy._predict(observations, deterministic=True)
     if algorithm_name in {"sac", "td3"}:
@@ -155,7 +237,17 @@ def discounted_returns(
     dones: np.ndarray,
     gamma: float,
 ) -> np.ndarray:
-    """Calculates discounted returns-to-go for a sequence of transitions."""
+    """Calculates discounted returns-to-go for a sequence of transitions.
+    
+    Args:
+        rewards: Rewards value.
+        dones: Dones value.
+        gamma: Gamma value.
+    
+    Returns:
+        Discounted returns-to-go for the transitions.
+
+    """
     returns = np.zeros_like(rewards, dtype=np.float32)
     running_return = 0.0
     for index in range(len(rewards) - 1, -1, -1):
@@ -175,10 +267,24 @@ def trajectory_rows_to_transitions(
     gamma: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Rolls expert actions through environments and returns training targets.
-
+    
     The environment, rather than a duplicate reward implementation, defines the
     reward and executed action. This keeps critic targets identical to the ones
     used during subsequent RL training.
+    
+    Args:
+        trajectories: Rollout trajectories to summarize or transform.
+        dataset: Path dataset used by the environment or evaluator.
+        storage_params: Storage params value.
+        env_kwargs: Env kwargs value.
+        gamma: Gamma value.
+    
+    Returns:
+        Computed result.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
     """
     environments: dict[str, GasStorageEnv] = {}
     observations = []
@@ -255,7 +361,26 @@ def train_behavior_cloning(
     value_loss_coefficient: float = 0.5,
     progress: CliProgress | None = None,
 ) -> list[dict[str, float | int]]:
-    """Pretrains actor and critic networks from expert transitions."""
+    """Pretrains actor and critic networks from expert transitions.
+    
+    Args:
+        model: Policy or model used for prediction.
+        algorithm_name: Algorithm name value.
+        observations: Observations value.
+        requested_actions: Requested actions value.
+        executed_actions: Executed actions value.
+        returns: Returns value.
+        epochs: Epochs value.
+        batch_size: Batch size value.
+        learning_rate: Learning rate value.
+        seed: Random seed for deterministic behavior.
+        value_loss_coefficient: Value loss coefficient value.
+        progress: Progress value.
+    
+    Returns:
+        Computed result.
+
+    """
     torch.manual_seed(seed)
     device = model.device
     obs_tensor = torch.as_tensor(observations, dtype=torch.float32, device=device)
@@ -343,7 +468,13 @@ def train_behavior_cloning(
 
 
 def write_json(path: Path, payload: dict[str, Any] | list[dict[str, Any]]) -> None:
-    """Writes a JSON payload."""
+    """Writes a JSON payload.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        payload: Serializable payload to persist.
+
+    """
     with path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, indent=2, default=_json_default)
 
@@ -359,7 +490,23 @@ def run_pretraining(
     learning_rate: float = 1e-3,
     show_progress: bool = False,
 ) -> dict[str, Any]:
-    """Runs behavior-cloning pretraining and persists artifacts."""
+    """Runs behavior-cloning pretraining and persists artifacts.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        algorithm_name: Algorithm name value.
+        trajectory_path: Trajectory path value.
+        output_dir: Output dir value.
+        epochs: Epochs value.
+        batch_size: Batch size value.
+        learning_rate: Learning rate value.
+        show_progress: Show progress value.
+    
+    Returns:
+        Pretraining summary and artifact metadata.
+
+    """
     progress = CliProgress("behavior_cloning", total=5, enabled=show_progress)
     config["agent_config"]["algorithm_name"] = algorithm_name
     progress.step(1, "building environment")

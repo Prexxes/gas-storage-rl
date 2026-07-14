@@ -25,7 +25,24 @@ def run_experiment_group(
     pretrained_policy: str | Path | None = None,
     rerun: bool = False,
 ) -> dict[str, Any]:
-    """Runs one experiment per seed index and records a group manifest."""
+    """Runs one experiment per seed index and records a group manifest.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        algorithm: Algorithm name to configure or evaluate.
+        n_seeds: Number of seed repetitions.
+        seed_indices: Seed repetition indices to run.
+        pretrained_policy: Pretrained policy value.
+        rerun: Rerun value.
+    
+    Returns:
+        Experiment group summary.
+    
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
     if seed_indices is not None and n_seeds is not None:
         raise ValueError("Pass either n_seeds or seed_indices, not both")
     if seed_indices is None:
@@ -107,7 +124,13 @@ def run_experiment_group(
 
 
 def _record_validation_aulc(row: dict[str, Any], summary: dict[str, Any]) -> None:
-    """Copies validation AULC metrics from a run summary into a group row."""
+    """Copies validation AULC metrics from a run summary into a group row.
+    
+    Args:
+        row: Row value.
+        summary: Summary value.
+
+    """
     validation = summary.get("validation", {})
     for key in (
         "AULC_validation_return_raw",
@@ -122,7 +145,17 @@ def _create_group_dir(
     config_name: str,
     algorithm: str,
 ) -> tuple[Path, str]:
-    """Creates a unique experiment-group directory."""
+    """Creates a unique experiment-group directory.
+    
+    Args:
+        config: Experiment configuration dictionary.
+        config_name: Human-readable configuration name.
+        algorithm: Algorithm name to configure or evaluate.
+    
+    Returns:
+        Create group dir result.
+
+    """
     payload = json.dumps(config, sort_keys=True, default=str)
     hash_value = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
     timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -139,13 +172,25 @@ def _create_group_dir(
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Writes one JSON document."""
+    """Writes one JSON document.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        payload: Serializable payload to persist.
+
+    """
     with path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, indent=2, default=str)
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    """Writes the current experiment-group manifest."""
+    """Writes the current experiment-group manifest.
+    
+    Args:
+        path: Filesystem path to read from or write to.
+        rows: Rows to read, transform, or persist.
+
+    """
     fieldnames = list(rows[0]) if rows else []
     with path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -154,7 +199,12 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    """Runs a configured sequential experiment group."""
+    """Runs a configured sequential experiment group.
+    
+    Raises:
+        SystemExit: If the operation fails.
+
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--algorithm", required=True, choices=["ppo", "sac", "td3"])
