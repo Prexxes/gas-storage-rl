@@ -18,6 +18,7 @@ class RuleBasedPolicy:
     injection_rate: float = 1.0
     withdrawal_rate: float = 1.0
     target_inventory: float = 0.0
+    price_scale: float = 50.0
 
     @classmethod
     def from_training_prices(
@@ -28,6 +29,7 @@ class RuleBasedPolicy:
         injection_rate: float = 1.0,
         withdrawal_rate: float = 1.0,
         target_inventory: float = 0.0,
+        price_scale: float = 50.0,
     ) -> "RuleBasedPolicy":
         """Creates thresholds from training price quantiles.
         
@@ -38,6 +40,7 @@ class RuleBasedPolicy:
             injection_rate: Injection rate value.
             withdrawal_rate: Withdrawal rate value.
             target_inventory: Target inventory value.
+            price_scale: Price normalization scale used by observations.
         
         Returns:
             Computed result.
@@ -51,6 +54,7 @@ class RuleBasedPolicy:
             injection_rate=injection_rate,
             withdrawal_rate=withdrawal_rate,
             target_inventory=target_inventory,
+            price_scale=price_scale,
         )
 
     def act(
@@ -102,7 +106,7 @@ class RuleBasedPolicy:
         """
         del deterministic
         storage_level = float(observation[0] * self.capacity)
-        price = float(observation[1] * 50.0)
+        price = float(observation[1] * self.price_scale)
         remaining_time = float(observation[4])
         current_step = int(
             round((1.0 - remaining_time) * max(self.episode_length - 1, 0))

@@ -28,3 +28,18 @@ def test_rule_based_policy_decodes_remaining_time() -> None:
     action, _ = policy.predict(observation)
 
     assert action[0] == -1.0
+
+
+def test_rule_based_policy_uses_configured_price_scale() -> None:
+    """Prediction decodes normalized prices with the configured scale."""
+    policy = RuleBasedPolicy.from_training_prices(
+        np.array([[80.0, 90.0, 100.0, 110.0]]),
+        capacity=5.0,
+        episode_length=4,
+        price_scale=100.0,
+    )
+    observation = np.array([0.6, 1.05, 0.0, 1.0, 0.5, 0.2], dtype=np.float32)
+
+    action, _ = policy.predict(observation)
+
+    assert action[0] == -1.0

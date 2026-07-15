@@ -614,6 +614,7 @@ def run_benchmarks(
         episode_length=dataset.episode_length,
         injection_rate=storage_params.injection_rate,
         withdrawal_rate=storage_params.withdrawal_rate,
+        price_scale=float(env_kwargs.get("price_scale", 50.0)),
     )
     action_grid = np.asarray(
         config.get("evaluation_config", {}).get(
