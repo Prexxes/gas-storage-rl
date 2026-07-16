@@ -74,3 +74,20 @@ def test_terminal_feasibility_still_respects_physical_limits() -> None:
     )
 
     assert action == 0.0
+
+
+def test_terminal_feasibility_tolerates_roundoff_at_boundary() -> None:
+    """Roundoff near a terminal boundary does not disable reachability clipping."""
+    params = StorageParams(capacity=200.0)
+    target = 60.20290127953384
+    storage_level = target + 4.000000000000007
+
+    action = clip_storage_action_to_terminal_feasibility(
+        requested_action=1.0,
+        storage_level=storage_level,
+        params=params,
+        remaining_steps_after_action=3,
+        target_inventory=target,
+    )
+
+    assert abs(action + 1.0) < 1e-12

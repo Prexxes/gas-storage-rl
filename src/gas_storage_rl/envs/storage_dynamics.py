@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+TERMINAL_FEASIBILITY_TOLERANCE = 1e-9
+
+
 @dataclass(frozen=True)
 class StorageParams:
     """Physical gas storage parameters for the MVP model."""
@@ -82,5 +85,10 @@ def clip_storage_action_to_terminal_feasibility(
     lower_bound = max(normal_lower_bound, terminal_lower_bound)
     upper_bound = min(normal_upper_bound, terminal_upper_bound)
     if lower_bound > upper_bound:
+        if lower_bound - upper_bound <= TERMINAL_FEASIBILITY_TOLERANCE:
+            midpoint = 0.5 * (lower_bound + upper_bound)
+            return float(
+                min(max(midpoint, normal_lower_bound), normal_upper_bound)
+            )
         return float(min(max(requested_action, normal_lower_bound), normal_upper_bound))
     return float(min(max(requested_action, lower_bound), upper_bound))
