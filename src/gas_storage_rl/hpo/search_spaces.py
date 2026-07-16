@@ -266,7 +266,7 @@ def search_space_description() -> dict[str, Any]:
         "ppo": {
             "learning_rate": "float log [1e-5, 3e-3]",
             "n_steps": "categorical [256, 512, 1024, 2048]",
-            "batch_size": "categorical [64, 128, 256, 512], <= n_steps",
+            "batch_size": "categorical [64, 128, 256], <= n_steps",
             "n_epochs": "categorical [5, 10, 20]",
             "gamma": "float linear [0.95, 0.9999]",
             "gae_lambda": "float linear [0.80, 1.00]",
