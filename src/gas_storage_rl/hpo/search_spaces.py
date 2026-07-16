@@ -5,6 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 REWARD_SCALE_MULTIPLIERS = [0.25, 0.5, 1.0, 2.0, 4.0]
+TRAIN_UPDATE_COMBOS = {
+    "tf1_gs1": {"train_freq": 1, "gradient_steps": 1},
+    "tf4_gs1": {"train_freq": 4, "gradient_steps": 1},
+    "tf4_gs2": {"train_freq": 4, "gradient_steps": 2},
+    "tf8_gs1": {"train_freq": 8, "gradient_steps": 1},
+    "tf8_gs2": {"train_freq": 8, "gradient_steps": 2},
+}
 
 
 def suggest_hyperparameters(trial: Any, algorithm: str) -> dict[str, Any]:
@@ -46,6 +53,23 @@ def suggest_reward_scale_multiplier(trial: Any) -> float:
             REWARD_SCALE_MULTIPLIERS,
         )
     )
+
+
+def _suggest_train_update_combo(trial: Any) -> dict[str, int]:
+    """Suggests a bounded train/update cadence for off-policy algorithms.
+
+    Args:
+        trial: Optuna trial object or fixed-trial adapter.
+
+    Returns:
+        Train frequency and gradient step settings.
+
+    """
+    combo_name = trial.suggest_categorical(
+        "train_update_combo",
+        list(TRAIN_UPDATE_COMBOS),
+    )
+    return dict(TRAIN_UPDATE_COMBOS[combo_name])
 
 
 def suggest_ppo_hyperparameters(trial: Any) -> dict[str, Any]:
@@ -117,6 +141,7 @@ def suggest_sac_hyperparameters(trial: Any) -> dict[str, Any]:
 
     """
     ent_coef_mode = trial.suggest_categorical("ent_coef_mode", ["auto", "fixed"])
+    train_update_combo = _suggest_train_update_combo(trial)
     hyperparameters: dict[str, Any] = {
         "policy": "MlpPolicy",
         "learning_rate": trial.suggest_float("learning_rate", 1e-5, 3e-3, log=True),
@@ -128,11 +153,11 @@ def suggest_sac_hyperparameters(trial: Any) -> dict[str, Any]:
             "learning_starts",
             [1_000, 5_000, 10_000],
         ),
-        "batch_size": trial.suggest_categorical("batch_size", [128, 256, 512]),
+        "batch_size": trial.suggest_categorical("batch_size", [128, 256]),
         "tau": trial.suggest_float("tau", 0.005, 0.05, log=True),
         "gamma": trial.suggest_float("gamma", 0.95, 0.9999),
-        "train_freq": trial.suggest_categorical("train_freq", [1, 4, 8]),
-        "gradient_steps": trial.suggest_categorical("gradient_steps", [1, 4, 8]),
+        "train_freq": train_update_combo["train_freq"],
+        "gradient_steps": train_update_combo["gradient_steps"],
         "target_entropy": trial.suggest_categorical(
             "target_entropy",
             ["auto", -0.5, -1.0, -2.0],
@@ -176,6 +201,7 @@ def suggest_td3_hyperparameters(trial: Any) -> dict[str, Any]:
         "action_noise_mode",
         ["none", "normal"],
     )
+    train_update_combo = _suggest_train_update_combo(trial)
     hyperparameters: dict[str, Any] = {
         "policy": "MlpPolicy",
         "learning_rate": trial.suggest_float("learning_rate", 1e-5, 3e-3, log=True),
@@ -187,12 +213,12 @@ def suggest_td3_hyperparameters(trial: Any) -> dict[str, Any]:
             "learning_starts",
             [1_000, 5_000, 10_000],
         ),
-        "batch_size": trial.suggest_categorical("batch_size", [128, 256, 512]),
+        "batch_size": trial.suggest_categorical("batch_size", [128, 256]),
         "tau": trial.suggest_float("tau", 0.005, 0.05, log=True),
         "gamma": trial.suggest_float("gamma", 0.95, 0.9999),
-        "train_freq": trial.suggest_categorical("train_freq", [1, 4, 8]),
-        "gradient_steps": trial.suggest_categorical("gradient_steps", [1, 4, 8]),
-        "policy_delay": trial.suggest_categorical("policy_delay", [1, 2, 3]),
+        "train_freq": train_update_combo["train_freq"],
+        "gradient_steps": train_update_combo["gradient_steps"],
+        "policy_delay": trial.suggest_categorical("policy_delay", [2, 3]),
         "target_policy_noise": trial.suggest_float(
             "target_policy_noise",
             0.05,
@@ -257,11 +283,13 @@ def search_space_description() -> dict[str, Any]:
             "learning_rate": "float log [1e-5, 3e-3]",
             "buffer_size": "categorical [100000, 250000, 500000, 1000000]",
             "learning_starts": "categorical [1000, 5000, 10000]",
-            "batch_size": "categorical [128, 256, 512]",
+            "batch_size": "categorical [128, 256]",
             "tau": "float log [0.005, 0.05]",
             "gamma": "float linear [0.95, 0.9999]",
-            "train_freq": "categorical [1, 4, 8]",
-            "gradient_steps": "categorical [1, 4, 8]",
+            "train_update_combo": (
+                "categorical ['tf1_gs1', 'tf4_gs1', 'tf4_gs2', "
+                "'tf8_gs1', 'tf8_gs2']"
+            ),
             "ent_coef": "auto with tuned initial value, or fixed log [1e-4, 1e-1]",
             "target_entropy": "categorical ['auto', -0.5, -1.0, -2.0]",
             "use_sde": "categorical [false, true]",
@@ -272,12 +300,14 @@ def search_space_description() -> dict[str, Any]:
             "learning_rate": "float log [1e-5, 3e-3]",
             "buffer_size": "categorical [100000, 250000, 500000, 1000000]",
             "learning_starts": "categorical [1000, 5000, 10000]",
-            "batch_size": "categorical [128, 256, 512]",
+            "batch_size": "categorical [128, 256]",
             "tau": "float log [0.005, 0.05]",
             "gamma": "float linear [0.95, 0.9999]",
-            "train_freq": "categorical [1, 4, 8]",
-            "gradient_steps": "categorical [1, 4, 8]",
-            "policy_delay": "categorical [1, 2, 3]",
+            "train_update_combo": (
+                "categorical ['tf1_gs1', 'tf4_gs1', 'tf4_gs2', "
+                "'tf8_gs1', 'tf8_gs2']"
+            ),
+            "policy_delay": "categorical [2, 3]",
             "target_policy_noise": "float linear [0.05, 0.50]",
             "target_noise_clip": "float linear [0.10, 1.00]",
             "action_noise": "None or normal sigma linear [0.05, 0.50]",

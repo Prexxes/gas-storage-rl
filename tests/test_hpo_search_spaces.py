@@ -33,6 +33,15 @@ class NormalNoiseTrial(DeterministicTrial):
         return super().suggest_categorical(name, choices)
 
 
+class LastChoiceTrial(DeterministicTrial):
+    """Trial stub that selects the last offered categorical value."""
+
+    def suggest_categorical(self, name, choices):
+        """Returns the last categorical choice."""
+        del name
+        return choices[-1]
+
+
 def test_ppo_search_space_returns_json_safe_policy_kwargs() -> None:
     """PPO HPO parameters use JSON-safe activation names."""
     params = suggest_hyperparameters(DeterministicTrial(), "ppo")
@@ -52,6 +61,18 @@ def test_sac_search_space_tunes_auto_entropy_initialization() -> None:
     assert isinstance(params["ent_coef"], str)
     assert params["ent_coef"].startswith("auto_")
     assert "target_entropy" in params
+    assert params["batch_size"] == 128
+    assert params["train_freq"] == 1
+    assert params["gradient_steps"] == 1
+
+
+def test_sac_search_space_excludes_expensive_update_settings() -> None:
+    """SAC HPO avoids high batch sizes and high gradient-step counts."""
+    params = suggest_hyperparameters(LastChoiceTrial(), "sac")
+
+    assert params["batch_size"] == 256
+    assert params["train_freq"] == 8
+    assert params["gradient_steps"] == 2
 
 
 def test_td3_search_space_uses_json_safe_action_noise() -> None:
@@ -60,6 +81,20 @@ def test_td3_search_space_uses_json_safe_action_noise() -> None:
 
     assert params["action_noise"]["type"] == "normal"
     assert params["action_noise"]["sigma"] > 0.0
+    assert params["batch_size"] == 128
+    assert params["train_freq"] == 1
+    assert params["gradient_steps"] == 1
+    assert params["policy_delay"] == 2
+
+
+def test_td3_search_space_excludes_expensive_update_settings() -> None:
+    """TD3 HPO uses bounded train/update combos and policy delay values."""
+    params = suggest_hyperparameters(LastChoiceTrial(), "td3")
+
+    assert params["batch_size"] == 256
+    assert params["train_freq"] == 8
+    assert params["gradient_steps"] == 2
+    assert params["policy_delay"] == 3
 
 
 def test_reward_scale_multiplier_uses_shared_categorical_space() -> None:
@@ -77,3 +112,6 @@ def test_search_space_description_documents_phase_one_design() -> None:
     assert description["direction"] == "maximize"
     assert "reward_scale_multiplier" in description["shared_tuned_parameters"]
     assert "dataset_config" in description["fixed_design_parameters"]
+    assert description["sac"]["batch_size"] == "categorical [128, 256]"
+    assert "train_update_combo" in description["sac"]
+    assert description["td3"]["policy_delay"] == "categorical [2, 3]"
