@@ -482,6 +482,22 @@ available. Relative regret is computed per episode as
 `(perfect_foresight_return - method_return) / abs(perfect_foresight_return)`, with a
 small numerical floor in the denominator.
 
+Create seed-aggregated HPO learning curve plots:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_hpo_learning_curves \
+  --study-dir runs/hpo/<study_id> \
+  --mode overview \
+  --comparison-group-dir runs/experiment_groups/<sb3_default_group_id> \
+  --split validation \
+  --title "PPO HPO learning curves"
+```
+
+`overview` draws all HPO trials as faint curves, highlights the top 3 trials by
+the HPO objective, and labels the optional comparison group as `SB3 default`.
+`best_only` plots only the best HPO trial and the optional comparison group, both
+aggregated over seeds with 95% bootstrap percentile confidence intervals.
+
 Create an on-demand policy diagnostic plot for one fixed path without logging all
 step-level validation trajectories:
 
