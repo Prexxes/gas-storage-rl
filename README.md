@@ -237,6 +237,21 @@ PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
   --seed-indices 100 101 102 103 104 105 106 107
 ```
 
+To reuse the HPO-selected agent hyperparameters and effective `reward_scale` on
+a different environment config, use the transfer runner. The target config keeps
+its own environment name, capacity, price process, dataset settings, seeds, and
+training schedule; only `agent_config[algorithm]`, `agent_config.algorithm_name`,
+and `environment_config.reward_scale` are copied from the HPO reference:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_best_config_transfer \
+  --best-config runs/hpo/<study_id>/best_config.json \
+  --config configs/deterministic_c30.yaml \
+  --algorithm ppo \
+  --seed-indices 100 101 102 103 104 105 106 107 \
+  --output-config runs/hpo/<study_id>/deterministic_c30_ppo_transfer.yaml
+```
+
 Those final runs use the validation split for learning curves/AULC and the test
 split for final holdout performance.
 
