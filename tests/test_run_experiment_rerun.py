@@ -75,7 +75,10 @@ def _write_completed_run(
 def test_run_fingerprint_ignores_group_id_and_logging_dir() -> None:
     """Organizational run metadata does not change rerun identity."""
     config = {
-        "agent_config": {"algorithm_name": "ppo"},
+        "agent_config": {
+            "algorithm_name": "ppo",
+            "effective_hyperparameters": {"learning_rate": 0.0003},
+        },
         "seeds": {"agent_seed": 1},
         "logging_config": {"run_dir": "runs-a"},
         "experiment_group_id": "group-a",

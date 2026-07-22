@@ -7,6 +7,7 @@ from gas_storage_rl.training.config import (
     build_effective_run_config,
     seeds_for_run,
 )
+from gas_storage_rl.agents.sb3_factory import effective_sb3_hyperparameters
 
 
 def _base_config() -> dict:
@@ -84,6 +85,22 @@ def test_effective_run_config_keeps_only_used_training_fields() -> None:
         "algorithm_name": "ppo",
         "hyperparameters": {"policy": "MlpPolicy", "n_steps": 8},
     }
+
+
+def test_effective_sb3_hyperparameters_include_defaults_and_overrides() -> None:
+    """Effective SB3 hyperparameters include values omitted from YAML configs."""
+    hyperparameters = effective_sb3_hyperparameters(
+        "ppo",
+        {"policy": "MlpPolicy", "gamma": 1.0, "n_steps": 8},
+        seed=4,
+    )
+
+    assert hyperparameters["policy"] == "MlpPolicy"
+    assert hyperparameters["gamma"] == 1.0
+    assert hyperparameters["n_steps"] == 8
+    assert hyperparameters["learning_rate"] == 0.0003
+    assert hyperparameters["batch_size"] == 64
+    assert hyperparameters["seed"] == 4
 
 
 def test_effective_run_config_nests_price_process_parameters() -> None:

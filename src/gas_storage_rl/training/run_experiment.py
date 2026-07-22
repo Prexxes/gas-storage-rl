@@ -13,7 +13,10 @@ from typing import Any
 
 import torch
 
-from gas_storage_rl.agents.sb3_factory import make_sb3_agent
+from gas_storage_rl.agents.sb3_factory import (
+    effective_sb3_hyperparameters,
+    make_sb3_agent,
+)
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
 from gas_storage_rl.evaluation.metrics import (
@@ -56,6 +59,7 @@ def run_config_fingerprint(config: dict[str, Any]) -> str:
     normalized = copy.deepcopy(config)
     normalized.pop("experiment_group_id", None)
     normalized.pop("logging_config", None)
+    normalized.get("agent_config", {}).pop("effective_hyperparameters", None)
     serialized = json.dumps(
         normalized,
         sort_keys=True,
@@ -224,6 +228,15 @@ def run_experiment(
         config["agent_config"].get(algorithm, {}),
         seed=config["seeds"]["agent_seed"],
     )
+    effective_config["agent_config"]["effective_hyperparameters"] = (
+        effective_sb3_hyperparameters(
+            algorithm,
+            config["agent_config"].get(algorithm, {}),
+            seed=config["seeds"]["agent_seed"],
+        )
+    )
+    logger.config = effective_config
+    logger.write_json("config.json", effective_config)
     pretrained_policy_path = None
     if pretrained_policy:
         pretrained_policy_path = load_pretrained_policy_state(
