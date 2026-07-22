@@ -251,10 +251,30 @@ def test_run_experiment_logs_final_validation_after_exact_eval_step(
     monkeypatch.setattr(
         "gas_storage_rl.training.run_experiment._read_evaluation_rows",
         lambda run_dir: [
-            {"total_training_env_steps": 0, "mean_return_raw": 0.0},
-            {"total_training_env_steps": 8, "mean_return_raw": 8.0},
-            {"total_training_env_steps": 16, "mean_return_raw": 16.0},
-            {"total_training_env_steps": 16, "mean_return_raw": 10.0},
+            {
+                "total_training_env_steps": "0",
+                "mean_return_raw": "0.0",
+                "risk_adjusted_return_raw": "-1.0",
+                "split": "validation",
+            },
+            {
+                "total_training_env_steps": "8",
+                "mean_return_raw": "18.0",
+                "risk_adjusted_return_raw": "9.0",
+                "split": "validation",
+            },
+            {
+                "total_training_env_steps": "16",
+                "mean_return_raw": "16.0",
+                "risk_adjusted_return_raw": "12.0",
+                "split": "validation",
+            },
+            {
+                "total_training_env_steps": "16",
+                "mean_return_raw": "10.0",
+                "risk_adjusted_return_raw": "9.0",
+                "split": "validation",
+            },
         ],
     )
 
@@ -264,7 +284,11 @@ def test_run_experiment_logs_final_validation_after_exact_eval_step(
         row for name, row in fake_loggers[0].rows if name == "evaluations.csv"
     ]
     assert summary["validation"]["total_training_env_steps"] == 16
-    assert summary["validation"]["AULC_validation_return_raw"] == 104.0
-    assert summary["validation"]["normalized_AULC_validation_return_raw"] == 6.5
+    assert summary["validation"]["AULC_validation_return_raw"] == 184.0
+    assert summary["validation"]["normalized_AULC_validation_return_raw"] == 11.5
+    assert summary["best_validation"]["total_training_env_steps"] == 8.0
+    assert summary["best_validation"]["mean_return_raw"] == 18.0
+    assert summary["best_risk_adjusted_validation"]["total_training_env_steps"] == 16.0
+    assert summary["best_risk_adjusted_validation"]["risk_adjusted_return_raw"] == 12.0
     assert len(evaluation_rows) == 1
     assert evaluation_rows[0]["total_training_env_steps"] == 16

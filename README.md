@@ -257,7 +257,8 @@ Each RL run writes:
   `mean_return_raw - risk_adjusted_std_penalty * std_return_raw`
 - `final_model.zip`
 - `final_summary.json`: final validation metrics plus
-  `AULC_validation_return_raw` and `normalized_AULC_validation_return_raw`
+  `AULC_validation_return_raw`, `normalized_AULC_validation_return_raw`,
+  `best_validation`, and `best_risk_adjusted_validation`
 - `sb3_logs/`
 
 Experiment-group `runs.csv` also includes the two validation AULC columns for

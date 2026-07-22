@@ -160,6 +160,52 @@ def _read_evaluation_rows(run_dir: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(file))
 
 
+def _coerce_evaluation_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Returns an evaluation row with numeric strings converted to floats.
+
+    Args:
+        row: Evaluation row from CSV or in-memory metrics.
+
+    Returns:
+        Evaluation row with numeric values converted where possible.
+
+    """
+    coerced = {}
+    for key, value in row.items():
+        if isinstance(value, str):
+            try:
+                coerced[key] = float(value)
+            except ValueError:
+                coerced[key] = value
+        else:
+            coerced[key] = value
+    return coerced
+
+
+def _best_evaluation_metrics(
+    evaluation_rows: list[dict[str, Any]],
+    metric_name: str,
+) -> dict[str, Any] | None:
+    """Returns the validation metrics row with the highest selected metric.
+
+    Args:
+        evaluation_rows: Evaluation rows from one run.
+        metric_name: Metric used for selecting the best row.
+
+    Returns:
+        Best evaluation metrics row, or ``None`` when unavailable.
+
+    """
+    comparable_rows = [
+        row for row in evaluation_rows if row.get(metric_name) not in (None, "")
+    ]
+    if not comparable_rows:
+        return None
+    return _coerce_evaluation_row(
+        max(comparable_rows, key=lambda row: float(row[metric_name]))
+    )
+
+
 def run_experiment(
     config: dict[str, Any],
     algorithm: str,
@@ -279,9 +325,18 @@ def run_experiment(
         float(config.get("evaluation_config", {}).get("risk_adjusted_std_penalty", 0.5)),
     )
     logger.append_csv("evaluations.csv", validation_metrics)
+    evaluation_rows = _read_evaluation_rows(logger.run_dir)
+    best_validation_metrics = _best_evaluation_metrics(
+        evaluation_rows,
+        "mean_return_raw",
+    )
+    best_risk_adjusted_validation_metrics = _best_evaluation_metrics(
+        evaluation_rows,
+        "risk_adjusted_return_raw",
+    )
     validation_metrics.update(
         validation_return_aulc(
-            _read_evaluation_rows(logger.run_dir),
+            evaluation_rows,
             total_timesteps,
         )
     )
@@ -298,6 +353,8 @@ def run_experiment(
         if pretrained_policy_path is not None
         else None,
         "validation": validation_metrics,
+        "best_validation": best_validation_metrics,
+        "best_risk_adjusted_validation": best_risk_adjusted_validation_metrics,
         "train_wall_time_s": train_wall_time,
         "eval_wall_time_s": eval_wall_time,
         "total_wall_time_s": time.time() - started,
