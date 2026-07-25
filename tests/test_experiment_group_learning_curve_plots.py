@@ -12,6 +12,7 @@ from gas_storage_rl.plotting.plot_experiment_group_learning_curves import (
     AGGREGATE_VALUE_COLUMN,
     BENCHMARK_LINESTYLE,
     DEFAULT_Y_LABEL,
+    INTERQUARTILE_MEAN_Y_LABEL,
     aggregate_experiment_group_learning_curve,
     build_default_title,
     deduplicate_seed_step_evaluations,
@@ -33,6 +34,24 @@ def test_aggregate_experiment_group_learning_curve_uses_seed_mean() -> None:
     aggregate = aggregate_experiment_group_learning_curve(metrics)
 
     assert aggregate[AGGREGATE_VALUE_COLUMN].tolist() == [3.0, 5.0]
+
+
+def test_aggregate_experiment_group_learning_curve_uses_seed_iqm() -> None:
+    """IQM aggregation computes the interquartile mean over seed values."""
+    metrics = pd.DataFrame(
+        {
+            "seed_index": [0, 1, 2, 3],
+            "total_training_env_steps": [10, 10, 10, 10],
+            "mean_return_raw": [0.0, 1.0, 2.0, 100.0],
+        }
+    )
+
+    aggregate = aggregate_experiment_group_learning_curve(
+        metrics,
+        seed_aggregate="interquartile_mean",
+    )
+
+    assert aggregate["interquartile_mean_return_raw_over_seed"].tolist() == [1.5]
 
 
 def test_build_default_title_uses_environment_and_capacity() -> None:
@@ -91,6 +110,29 @@ def test_plot_uses_short_y_label_title_ci_and_benchmark_line() -> None:
     assert labels == ["PPO", "lsmc"]
     assert len(axis.collections) == 1
     assert axis.lines[1].get_linestyle() == BENCHMARK_LINESTYLE
+    plt.close(figure)
+
+
+def test_plot_iqm_uses_matching_y_label_and_curve_statistic() -> None:
+    """The IQM plot line and y-axis use the selected seed aggregate."""
+    group_metrics = pd.DataFrame(
+        {
+            "group_label": ["TD3", "TD3", "TD3", "TD3"],
+            "seed_index": [0, 1, 2, 3],
+            "total_training_env_steps": [10, 10, 10, 10],
+            "mean_return_raw": [0.0, 1.0, 2.0, 100.0],
+        }
+    )
+
+    figure = plot_experiment_group_learning_curves(
+        group_metrics,
+        seed_aggregate="interquartile_mean",
+        n_bootstrap=200,
+    )
+    axis = figure.axes[0]
+
+    assert axis.get_ylabel() == INTERQUARTILE_MEAN_Y_LABEL
+    assert axis.lines[0].get_ydata().tolist() == [1.5]
     plt.close(figure)
 
 

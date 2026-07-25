@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 
 
@@ -16,6 +18,38 @@ def bootstrap_percentile_ci(
 
     Args:
         values: One-dimensional sample values.
+        confidence_level: Confidence mass covered by the interval.
+        n_bootstrap: Number of bootstrap resamples.
+        random_seed: Seed used for deterministic resampling.
+
+    Returns:
+        Lower and upper confidence interval bounds.
+
+    Raises:
+        ValueError: If inputs are empty or outside valid ranges.
+    """
+    return bootstrap_percentile_statistic_ci(
+        values,
+        statistic=np.mean,
+        confidence_level=confidence_level,
+        n_bootstrap=n_bootstrap,
+        random_seed=random_seed,
+    )
+
+
+def bootstrap_percentile_statistic_ci(
+    values: np.ndarray,
+    *,
+    statistic: Callable[[np.ndarray], float],
+    confidence_level: float = 0.95,
+    n_bootstrap: int = 10_000,
+    random_seed: int = 0,
+) -> tuple[float, float]:
+    """Returns a percentile bootstrap confidence interval for a statistic.
+
+    Args:
+        values: One-dimensional sample values.
+        statistic: Statistic function applied to each bootstrap resample.
         confidence_level: Confidence mass covered by the interval.
         n_bootstrap: Number of bootstrap resamples.
         random_seed: Seed used for deterministic resampling.
@@ -42,7 +76,7 @@ def bootstrap_percentile_ci(
 
     rng = np.random.default_rng(random_seed)
     draws = rng.choice(sample, size=(int(n_bootstrap), sample.size), replace=True)
-    bootstrap_means = draws.mean(axis=1)
+    bootstrap_statistics = np.array([float(statistic(draw)) for draw in draws])
     tail = (1.0 - float(confidence_level)) / 2.0
-    lower, upper = np.quantile(bootstrap_means, [tail, 1.0 - tail])
+    lower, upper = np.quantile(bootstrap_statistics, [tail, 1.0 - tail])
     return float(lower), float(upper)

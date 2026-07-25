@@ -519,6 +519,20 @@ override them. Benchmarks are optional and are drawn as reference lines when
 The default y-axis label is `Mittlerer Return über Seeds`. With
 `--environment-label OU --capacity 30`, the default title is
 `Lernkurven auf der OU-Umgebung mit Kapazität 30`; pass `--title` to override it.
+By default, seed values are averaged with `--seed-aggregate mean`. To plot the
+interquartile mean over seeds instead, use:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_experiment_group_learning_curves \
+  --experiment-group-dir runs/experiment_groups/<td3_group_id> \
+  --split validation \
+  --environment-label OU \
+  --capacity 30 \
+  --seed-aggregate interquartile_mean
+```
+
+The IQM curve and its bootstrap confidence interval are both computed from the
+same interquartile-mean statistic over seed-level `mean_return_raw` values.
 
 Create seed-aggregated HPO learning curve plots:
 

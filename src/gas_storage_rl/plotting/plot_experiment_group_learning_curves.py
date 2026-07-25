@@ -9,15 +9,19 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
-from gas_storage_rl.plotting.statistics import bootstrap_percentile_ci
+from gas_storage_rl.evaluation.metrics import interquartile_mean
+from gas_storage_rl.plotting.statistics import bootstrap_percentile_statistic_ci
 
 STEP_COLUMN = "total_training_env_steps"
 VALUE_COLUMN = "mean_return_raw"
 AGGREGATE_VALUE_COLUMN = "mean_return_raw_over_seed"
 DEFAULT_Y_LABEL = "Mittlerer Return über Seeds"
+INTERQUARTILE_MEAN_Y_LABEL = "Interquartile Mean Return über Seeds"
 BENCHMARK_LINESTYLE = "--"
+SEED_AGGREGATES = {"mean", "interquartile_mean"}
 
 
 def main() -> None:
@@ -31,6 +35,12 @@ def main() -> None:
     parser.add_argument("--title")
     parser.add_argument("--environment-label")
     parser.add_argument("--capacity")
+    parser.add_argument(
+        "--seed-aggregate",
+        choices=sorted(SEED_AGGREGATES),
+        default="mean",
+    )
+    parser.add_argument("--y-label")
     parser.add_argument("--n-bootstrap", type=int, default=10_000)
     parser.add_argument("--random-seed", type=int, default=0)
     args = parser.parse_args()
@@ -67,8 +77,13 @@ def main() -> None:
         else args.title,
         n_bootstrap=args.n_bootstrap,
         random_seed=args.random_seed,
+        seed_aggregate=args.seed_aggregate,
+        y_label=args.y_label,
     )
-    output_path = output_dir / f"learning_curves_experiment_groups_{args.split}.png"
+    output_path = (
+        output_dir
+        / f"learning_curves_experiment_groups_{args.split}_{args.seed_aggregate}.png"
+    )
     _save(figure, output_path)
     print(f"Saved experiment-group learning curve plot to {output_dir.resolve()}")
 
@@ -80,6 +95,8 @@ def plot_experiment_group_learning_curves(
     title: str | None = None,
     n_bootstrap: int = 10_000,
     random_seed: int = 0,
+    seed_aggregate: str = "mean",
+    y_label: str | None = None,
 ) -> plt.Figure:
     """Plots experiment-group learning curves with bootstrap confidence bands.
 
@@ -89,6 +106,8 @@ def plot_experiment_group_learning_curves(
         title: Optional plot title.
         n_bootstrap: Number of bootstrap samples for confidence bands.
         random_seed: Seed used for deterministic confidence bands.
+        seed_aggregate: Statistic used to aggregate seed values by step.
+        y_label: Optional y-axis label.
 
     Returns:
         Matplotlib figure.
@@ -99,6 +118,7 @@ def plot_experiment_group_learning_curves(
     if group_metrics.empty:
         raise ValueError("group_metrics must not be empty")
     _require_columns(group_metrics, {"group_label", STEP_COLUMN, VALUE_COLUMN})
+    _validate_seed_aggregate(seed_aggregate)
 
     figure, axis = plt.subplots(figsize=(9, 5))
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
@@ -112,13 +132,14 @@ def plot_experiment_group_learning_curves(
             color=color,
             n_bootstrap=n_bootstrap,
             random_seed=random_seed + offset * 10_000,
+            seed_aggregate=seed_aggregate,
         )
 
     if benchmark_metrics is not None and not benchmark_metrics.empty:
         _plot_benchmark_references(axis, benchmark_metrics)
 
     axis.set_xlabel("Total environment steps")
-    axis.set_ylabel(DEFAULT_Y_LABEL)
+    axis.set_ylabel(y_label or _default_y_label(seed_aggregate))
     if title:
         axis.set_title(title)
     axis.grid(alpha=0.25)
@@ -179,25 +200,36 @@ def load_benchmark_learning_curves(
 
 def aggregate_experiment_group_learning_curve(
     seed_metrics: pd.DataFrame,
+    *,
+    seed_aggregate: str = "mean",
 ) -> pd.DataFrame:
     """Aggregates per-seed returns by evaluation step.
 
     Args:
         seed_metrics: Per-seed evaluation rows.
+        seed_aggregate: Statistic used to aggregate seed values by step.
 
     Returns:
         Stepwise seed-averaged learning curve.
     """
     _require_columns(seed_metrics, {STEP_COLUMN, VALUE_COLUMN})
+    _validate_seed_aggregate(seed_aggregate)
     data = deduplicate_seed_step_evaluations(seed_metrics)
     data[STEP_COLUMN] = pd.to_numeric(data[STEP_COLUMN])
     data[VALUE_COLUMN] = pd.to_numeric(data[VALUE_COLUMN])
-    return (
-        data.groupby(STEP_COLUMN, as_index=False)[VALUE_COLUMN]
-        .mean()
-        .rename(columns={VALUE_COLUMN: AGGREGATE_VALUE_COLUMN})
-        .sort_values(STEP_COLUMN)
-    )
+    aggregate_column = _aggregate_value_column(seed_aggregate)
+    rows = []
+    for step, group in data.groupby(STEP_COLUMN, sort=True):
+        rows.append(
+            {
+                STEP_COLUMN: step,
+                aggregate_column: _seed_statistic(
+                    group[VALUE_COLUMN].to_numpy(),
+                    seed_aggregate,
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def build_default_title(
@@ -249,14 +281,20 @@ def _plot_group_curve_with_ci(
     color: str,
     n_bootstrap: int,
     random_seed: int,
+    seed_aggregate: str,
 ) -> None:
     """Plots one seed-aggregated group curve with a confidence band."""
-    aggregate = aggregate_experiment_group_learning_curve(seed_metrics)
+    aggregate = aggregate_experiment_group_learning_curve(
+        seed_metrics,
+        seed_aggregate=seed_aggregate,
+    )
     intervals = _bootstrap_curve_intervals(
         seed_metrics,
         n_bootstrap=n_bootstrap,
         random_seed=random_seed,
+        seed_aggregate=seed_aggregate,
     )
+    aggregate_column = _aggregate_value_column(seed_aggregate)
     axis.fill_between(
         intervals[STEP_COLUMN].to_numpy(),
         intervals["ci_lower"].to_numpy(),
@@ -267,7 +305,7 @@ def _plot_group_curve_with_ci(
     )
     axis.plot(
         aggregate[STEP_COLUMN],
-        aggregate[AGGREGATE_VALUE_COLUMN],
+        aggregate[aggregate_column],
         color=color,
         linewidth=2.5,
         label=label,
@@ -298,21 +336,57 @@ def _bootstrap_curve_intervals(
     *,
     n_bootstrap: int,
     random_seed: int,
+    seed_aggregate: str,
 ) -> pd.DataFrame:
     """Computes bootstrap intervals for each evaluation step."""
+    _validate_seed_aggregate(seed_aggregate)
     rows = []
     data = deduplicate_seed_step_evaluations(seed_metrics)
     data[STEP_COLUMN] = pd.to_numeric(data[STEP_COLUMN])
     data[VALUE_COLUMN] = pd.to_numeric(data[VALUE_COLUMN])
     for offset, (step, group) in enumerate(data.groupby(STEP_COLUMN, sort=True)):
-        lower, upper = bootstrap_percentile_ci(
+        lower, upper = bootstrap_percentile_statistic_ci(
             group[VALUE_COLUMN].to_numpy(),
+            statistic=lambda values: _seed_statistic(values, seed_aggregate),
             confidence_level=0.95,
             n_bootstrap=n_bootstrap,
             random_seed=random_seed + offset,
         )
         rows.append({STEP_COLUMN: step, "ci_lower": lower, "ci_upper": upper})
     return pd.DataFrame(rows)
+
+
+def _seed_statistic(values: np.ndarray, seed_aggregate: str) -> float:
+    """Computes the selected seed aggregation statistic."""
+    if seed_aggregate == "mean":
+        return float(np.mean(values))
+    if seed_aggregate == "interquartile_mean":
+        return interquartile_mean(values)
+    raise ValueError(f"Unknown seed_aggregate: {seed_aggregate}")
+
+
+def _aggregate_value_column(seed_aggregate: str) -> str:
+    """Returns the aggregate value column name for the selected statistic."""
+    if seed_aggregate == "mean":
+        return AGGREGATE_VALUE_COLUMN
+    if seed_aggregate == "interquartile_mean":
+        return "interquartile_mean_return_raw_over_seed"
+    raise ValueError(f"Unknown seed_aggregate: {seed_aggregate}")
+
+
+def _default_y_label(seed_aggregate: str) -> str:
+    """Returns the default y-axis label for the selected seed aggregate."""
+    if seed_aggregate == "mean":
+        return DEFAULT_Y_LABEL
+    if seed_aggregate == "interquartile_mean":
+        return INTERQUARTILE_MEAN_Y_LABEL
+    raise ValueError(f"Unknown seed_aggregate: {seed_aggregate}")
+
+
+def _validate_seed_aggregate(seed_aggregate: str) -> None:
+    """Raises a clear error for unknown seed aggregation modes."""
+    if seed_aggregate not in SEED_AGGREGATES:
+        raise ValueError(f"seed_aggregate must be one of {sorted(SEED_AGGREGATES)}")
 
 
 def _load_one_experiment_group(group_dir: Path, split: str) -> pd.DataFrame:
