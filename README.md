@@ -498,6 +498,28 @@ available. Relative regret is computed per episode as
 `(perfect_foresight_return - method_return) / abs(perfect_foresight_return)`, with a
 small numerical floor in the denominator.
 
+Create seed-aggregated learning-curve plots across experiment groups:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_experiment_group_learning_curves \
+  --experiment-group-dir runs/experiment_groups/<ppo_group_id> \
+  --experiment-group-dir runs/experiment_groups/<sac_group_id> \
+  --benchmark-run-dir runs/benchmarks/<benchmark_run_id> \
+  --split validation \
+  --environment-label OU \
+  --capacity 30
+```
+
+At least one `--experiment-group-dir` is required. Legend labels default to the
+group's `algorithm_name` from `runs.csv`; pass `--group-label` once per group to
+override them. Benchmarks are optional and are drawn as reference lines when
+`benchmark_evaluations.csv` is available. Each RL curve uses the per-seed
+`mean_return_raw` values from `evaluations.csv` and plots their stepwise mean as
+`mean_return_raw_over_seed` with 95% bootstrap percentile confidence intervals.
+The default y-axis label is `Mittlerer Return über Seeds`. With
+`--environment-label OU --capacity 30`, the default title is
+`Lernkurven auf der OU-Umgebung mit Kapazität 30`; pass `--title` to override it.
+
 Create seed-aggregated HPO learning curve plots:
 
 ```bash
