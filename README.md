@@ -171,21 +171,23 @@ runs/experiment_groups/<group_id>/
 
 ## Hyperparameter Tuning
 
-Phase 1 hyperparameter tuning uses Optuna with the TPE sampler. Each trial trains
-one algorithm-specific hyperparameter configuration on the train split for seed
-indices `0`, `1`, and `2`, and also tunes a shared `reward_scale_multiplier`
-from `[0.25, 0.5, 1.0, 2.0, 4.0]`. The effective environment `reward_scale` is
-the base config value multiplied by that trial value. HPO selects by the mean
-across tuning seeds of the maximum validation `mean_return_raw` observed during
-training, matching the `best_validation_model` checkpoint rule. The test split is
-not used by the HPO runner.
+Phase 1 hyperparameter tuning uses Optuna with the TPE sampler. The first trial
+is enqueued as an SB3-default reference configuration with `gamma=1.0`. Each
+trial trains one algorithm-specific hyperparameter configuration on the train
+split for seed indices `0`, `1`, and `2`, and also tunes a shared
+`reward_scale_multiplier` from `[1.0, 2.0, 4.0]`. The effective environment
+`reward_scale` is the base config value multiplied by that trial value. HPO
+selects by the mean across tuning seeds of the maximum validation
+`mean_return_raw` observed during training, matching the `best_validation_model`
+checkpoint rule. The test split is not used by the HPO runner.
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.hpo.run_hpo \
   --config configs/ou_c30.yaml \
   --algorithm ppo \
-  --n-trials 32 \
+  --n-trials 11 \
   --n-jobs 1 \
+  --n-startup-trials 4 \
   --seed-indices 0 1 2 \
   --total-timesteps 500000
 ```

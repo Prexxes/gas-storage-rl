@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from gas_storage_rl.hpo.search_spaces import (
+    reference_trial_params,
     search_space_description,
     suggest_hyperparameters,
     suggest_reward_scale_multiplier,
@@ -22,6 +23,7 @@ from gas_storage_rl.training.run_experiment import run_experiment
 
 DEFAULT_HPO_SEED_INDICES = [0, 1, 2]
 DEFAULT_N_TRIALS = 32
+DEFAULT_N_STARTUP_TRIALS = 4
 DEFAULT_TOTAL_TIMESTEPS = 500_000
 HPO_OBJECTIVE = "mean_across_seeds_of_max_validation_mean_return_raw"
 HPO_OBJECTIVE_SELECTION = "max_mean_return_raw"
@@ -39,6 +41,7 @@ def run_hpo(
     resume_study_dir: str | Path | None = None,
     rerun: bool = False,
     n_jobs: int = 1,
+    n_startup_trials: int = DEFAULT_N_STARTUP_TRIALS,
 ) -> dict[str, Any]:
     """Runs phase-1 HPO using Optuna TPE and returns a study summary.
     
@@ -53,6 +56,7 @@ def run_hpo(
         resume_study_dir: Resume study dir value.
         rerun: Rerun value.
         n_jobs: N jobs value.
+        n_startup_trials: Number of random startup trials before TPE sampling.
     
     Returns:
         HPO study summary.
@@ -61,7 +65,7 @@ def run_hpo(
     import optuna
 
     seed_indices = list(DEFAULT_HPO_SEED_INDICES if seed_indices is None else seed_indices)
-    _validate_hpo_inputs(algorithm, n_trials, seed_indices, n_jobs)
+    _validate_hpo_inputs(algorithm, n_trials, seed_indices, n_jobs, n_startup_trials)
     study_dir, study_id, is_resume = _study_dir(
         config,
         config_name,
@@ -79,11 +83,15 @@ def run_hpo(
         n_trials,
         total_timesteps,
         n_jobs,
+        n_startup_trials,
     )
     _write_json(study_dir / "study_config.json", hpo_config)
     _write_json(study_dir / "search_space.json", search_space_description())
 
-    sampler = optuna.samplers.TPESampler(seed=int(config["seeds"]["master_seed"]))
+    sampler = optuna.samplers.TPESampler(
+        seed=int(config["seeds"]["master_seed"]),
+        n_startup_trials=int(n_startup_trials),
+    )
     study = optuna.create_study(
         study_name=study_id,
         direction="maximize",
@@ -91,6 +99,11 @@ def run_hpo(
         storage=storage_url,
         load_if_exists=True,
     )
+    if not is_resume and not study.trials:
+        study.enqueue_trial(
+            reference_trial_params(algorithm),
+            user_attrs={"trial_role": "sb3_default_reference"},
+        )
     finished_trials_before = _finished_trial_count(study)
     remaining_trials = max(0, int(n_trials) - finished_trials_before)
     _write_metadata(
@@ -107,6 +120,8 @@ def run_hpo(
             "n_existing_finished_trials": finished_trials_before,
             "n_remaining_trials": remaining_trials,
             "n_jobs": n_jobs,
+            "n_startup_trials": n_startup_trials,
+            "has_enqueued_reference_trial": not is_resume,
             "seed_indices": seed_indices,
             "total_timesteps": total_timesteps,
             "objective": HPO_OBJECTIVE,
@@ -703,6 +718,7 @@ def _hpo_config(
     n_trials: int,
     total_timesteps: int,
     n_jobs: int,
+    n_startup_trials: int,
 ) -> dict[str, Any]:
     """Returns the saved HPO configuration.
     
@@ -715,6 +731,7 @@ def _hpo_config(
         n_trials: N trials value.
         total_timesteps: Total timesteps value.
         n_jobs: N jobs value.
+        n_startup_trials: Number of random startup trials before TPE sampling.
     
     Returns:
         Hpo config result.
@@ -727,6 +744,8 @@ def _hpo_config(
         "hpo_method": "Optuna TPE",
         "n_trials": n_trials,
         "n_jobs": n_jobs,
+        "n_startup_trials": n_startup_trials,
+        "reference_trial": reference_trial_params(algorithm),
         "tuning_seed_indices": seed_indices,
         "total_timesteps": total_timesteps,
         "objective": HPO_OBJECTIVE,
@@ -842,6 +861,7 @@ def _validate_hpo_inputs(
     n_trials: int,
     seed_indices: list[int],
     n_jobs: int = 1,
+    n_startup_trials: int = DEFAULT_N_STARTUP_TRIALS,
 ) -> None:
     """Validates HPO runner settings.
     
@@ -850,6 +870,7 @@ def _validate_hpo_inputs(
         n_trials: N trials value.
         seed_indices: Seed repetition indices to run.
         n_jobs: N jobs value.
+        n_startup_trials: Number of random startup trials before TPE sampling.
     
     Raises:
         ValueError: If an input value or configuration is invalid.
@@ -861,6 +882,8 @@ def _validate_hpo_inputs(
         raise ValueError("n_trials must be positive")
     if n_jobs <= 0:
         raise ValueError("n_jobs must be positive")
+    if n_startup_trials < 0:
+        raise ValueError("n_startup_trials must be non-negative")
     if len(seed_indices) != len(set(seed_indices)):
         raise ValueError("seed_indices must be unique")
     if not seed_indices:
@@ -1086,6 +1109,12 @@ def main() -> None:
         help="Number of Optuna trials to run in parallel.",
     )
     parser.add_argument(
+        "--n-startup-trials",
+        type=int,
+        default=DEFAULT_N_STARTUP_TRIALS,
+        help="Number of random startup trials before TPE sampling.",
+    )
+    parser.add_argument(
         "--seed-indices",
         type=int,
         nargs="+",
@@ -1120,6 +1149,7 @@ def main() -> None:
         resume_study_dir=args.resume_study_dir,
         rerun=args.rerun,
         n_jobs=args.n_jobs,
+        n_startup_trials=args.n_startup_trials,
     )
     print(json.dumps(summary, indent=2))
 

@@ -96,9 +96,10 @@ def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
         seed_index = kwargs["seed_index"]
         called_seed_indices.append(seed_index)
         assert config["training_config"]["total_timesteps"] == 500_000
-        assert config["environment_config"]["reward_scale"] == 0.5
+        assert config["environment_config"]["reward_scale"] == 2.0
         assert config["agent_config"]["ppo"]["device"] == "cpu"
-        assert config["agent_config"]["ppo"]["n_steps"] == 256
+        assert config["agent_config"]["ppo"]["n_steps"] == 1024
+        assert config["agent_config"]["ppo"]["gamma"] == 1.0
         return {
             "status": "completed",
             "run_dir": str(tmp_path / f"run-{seed_index}"),
@@ -138,15 +139,15 @@ def test_run_trial_aggregates_three_seed_runs_and_writes_artifacts(
     )
     assert trial_rows[0]["objective_mean_validation_return_raw"] == "11.0"
     assert trial_rows[0]["median_validation_return_raw_across_seeds"] == "11.0"
-    assert trial_rows[0]["reward_scale_multiplier"] == "0.25"
+    assert trial_rows[0]["reward_scale_multiplier"] == "1.0"
     assert trial_rows[0]["base_reward_scale"] == "2.0"
-    assert trial_rows[0]["effective_reward_scale"] == "0.5"
+    assert trial_rows[0]["effective_reward_scale"] == "2.0"
     seed_rows = list(
         csv.DictReader((study_dir / "trial_seed_runs.csv").open(encoding="utf-8"))
     )
     assert [row["seed_index"] for row in seed_rows] == ["0", "1", "2"]
     assert {row["dataset_seed"] for row in seed_rows} == {"11"}
-    assert {row["effective_reward_scale"] for row in seed_rows} == {"0.5"}
+    assert {row["effective_reward_scale"] for row in seed_rows} == {"2.0"}
     assert {row["hpo_objective_selection"] for row in seed_rows} == {
         "final_mean_return_raw"
     }
@@ -361,3 +362,9 @@ def test_validate_hpo_inputs_rejects_nonpositive_n_jobs() -> None:
     """Trial-level parallelism requires a positive worker count."""
     with pytest.raises(ValueError, match="n_jobs must be positive"):
         run_hpo._validate_hpo_inputs("ppo", 32, [0, 1, 2], 0)
+
+
+def test_validate_hpo_inputs_rejects_negative_startup_trials() -> None:
+    """TPE startup trial count cannot be negative."""
+    with pytest.raises(ValueError, match="n_startup_trials must be non-negative"):
+        run_hpo._validate_hpo_inputs("ppo", 32, [0, 1, 2], 1, -1)
