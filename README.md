@@ -82,7 +82,10 @@ scaled_reward = raw_reward / reward_scale
 
 For non-terminal steps, `terminal_penalty_t` is zero. The environment returns the
 scaled cashflow reward to RL algorithms and records the unscaled reward as
-`raw_reward` in `info`.
+`raw_reward` in `info`. With `clipping_variant: v2`, terminal-reachability clipping
+also adds `clip_penalty = -clip_penalty_factor * mean_training_price *
+terminal_clip_distance` to the scaled training reward. The economic `raw_reward`
+and `mean_return_raw` evaluation metric remain separate from this shaped reward.
 
 ## Benchmarks
 

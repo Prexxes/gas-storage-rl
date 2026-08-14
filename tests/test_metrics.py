@@ -94,3 +94,42 @@ def test_episode_summary_uses_cashflow_reward_for_evaluation() -> None:
     assert summary["episode_return_raw"] == 9.0
     assert np.isclose(summary["episode_return_scaled"], 0.9)
     assert summary["cumulative_cashflow"] == 10.0
+    assert summary["episode_return_shaped_raw"] == 9.0
+    assert summary["cumulative_terminal_clip_distance"] == 0.0
+    assert summary["cumulative_clip_penalty"] == 0.0
+
+
+def test_clip_penalties_affect_shaped_return_not_economic_return() -> None:
+    """Clip penalties are logged separately from economic return."""
+    summary = summarize_episode_infos(
+        [
+            {
+                "raw_cashflow": 0.0,
+                "terminal_penalty": 0.0,
+                "raw_reward": 0.0,
+                "shaped_raw_reward": -5.0,
+                "scaled_reward": -0.5,
+                "reward_scale": 10.0,
+                "executed_action": 0.0,
+                "requested_action": 1.0,
+                "storage_level": 0.0,
+                "target_terminal_inventory": 0.0,
+                "terminal_clip_distance": 0.5,
+                "clip_penalty": -5.0,
+            },
+        ]
+    )
+    metrics = summarize_evaluation(
+        [summary],
+        split="validation",
+        total_training_env_steps=10,
+    )
+
+    assert summary["episode_return_raw"] == 0.0
+    assert summary["episode_return_shaped_raw"] == -5.0
+    assert summary["cumulative_terminal_clip_distance"] == 0.5
+    assert summary["cumulative_clip_penalty"] == -5.0
+    assert metrics["mean_return_raw"] == 0.0
+    assert metrics["mean_return_shaped_raw"] == -5.0
+    assert metrics["mean_cumulative_terminal_clip_distance"] == 0.5
+    assert metrics["mean_cumulative_clip_penalty"] == -5.0

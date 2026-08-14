@@ -107,7 +107,22 @@ reward_t = cashflow_t + terminal_penalty_t
 ```
 
 For non-terminal steps, `terminal_penalty_t` is zero. The scaled reward returned to
-the RL algorithm is `reward_t / reward_scale`.
+the RL algorithm is `reward_t / reward_scale` for `clipping_variant: v1`.
+
+With `clipping_variant: v2`, terminal-reachability clipping is unchanged, but the
+training reward includes an additional linear penalty for the terminal clip
+distance:
+
+```text
+terminal_clip_distance = abs(rate_capacity_clipped_action - executed_action)
+clip_penalty = -clip_penalty_factor * mean_training_price * terminal_clip_distance
+shaped_raw_reward = raw_reward + clip_penalty
+scaled_reward = shaped_raw_reward / reward_scale
+```
+
+The economic `raw_reward` remains `raw_cashflow + terminal_penalty`. Evaluation
+summaries therefore keep `mean_return_raw` economic and log shaped reward and clip
+penalty diagnostics separately.
 
 ## Observation Normalization
 

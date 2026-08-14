@@ -12,6 +12,7 @@ from gas_storage_rl.envs.storage_dynamics import StorageParams
 def make_env(
     prices: np.ndarray | None = None,
     storage_params: StorageParams | None = None,
+    **env_kwargs,
 ) -> GasStorageEnv:
     """Creates a tiny deterministic environment."""
     price_paths = np.asarray(
@@ -30,6 +31,7 @@ def make_env(
         reward_scale=10.0,
         penalty_factor=0.5,
         fixed_path_id=0,
+        **env_kwargs,
     )
 
 
@@ -166,6 +168,28 @@ def test_terminal_feasibility_clips_final_action_to_target() -> None:
     assert info["terminal_feasibility_clipped"] is True
     assert info["storage_level"] == 0.0
     assert info["terminal_penalty"] == 0.0
+
+
+def test_v2_penalizes_only_terminal_clip_distance() -> None:
+    """V2 shapes training reward with terminal clip penalties."""
+    env = make_env(
+        prices=np.array([[10.0]], dtype=np.float32),
+        clipping_variant="v2",
+        clip_penalty_factor=1.0,
+    )
+    env.reset(options={"initial_inventory": 0.0})
+
+    _, reward, terminated, _, info = env.step([1.0])
+
+    assert terminated
+    assert info["clipping_variant"] == "v2"
+    assert info["rate_capacity_clipped_action"] == 1.0
+    assert info["executed_action"] == 0.0
+    assert info["terminal_clip_distance"] == 1.0
+    assert info["raw_reward"] == 0.0
+    assert info["clip_penalty"] == -10.0
+    assert info["shaped_raw_reward"] == -10.0
+    assert reward == -1.0
 
 
 def test_normalized_observation_values() -> None:

@@ -115,6 +115,19 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
         ],
         dtype=np.float64,
     )
+    shaped_rewards = np.array(
+        [
+            info.get(
+                "shaped_raw_reward",
+                info.get(
+                    "raw_reward",
+                    info["raw_cashflow"] + info["terminal_penalty"],
+                ),
+            )
+            for info in infos
+        ],
+        dtype=np.float64,
+    )
     scaled_rewards = np.array(
         [info["scaled_reward"] for info in infos],
         dtype=np.float64,
@@ -130,6 +143,13 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
         "terminal_deviation": float(abs(storage[-1] - target_inventory)),
         "terminal_penalty": float(np.sum([info["terminal_penalty"] for info in infos])),
         "cumulative_cashflow": float(np.sum([info["raw_cashflow"] for info in infos])),
+        "episode_return_shaped_raw": float(np.sum(shaped_rewards)),
+        "cumulative_terminal_clip_distance": float(
+            np.sum([info.get("terminal_clip_distance", 0.0) for info in infos])
+        ),
+        "cumulative_clip_penalty": float(
+            np.sum([info.get("clip_penalty", 0.0) for info in infos])
+        ),
         "number_of_constrained_actions": float(
             np.sum(
                 [
@@ -182,6 +202,30 @@ def summarize_evaluation(
         ),
         "mean_terminal_penalty": float(
             np.mean([item["terminal_penalty"] for item in episode_summaries])
+        ),
+        "mean_return_shaped_raw": float(
+            np.mean(
+                [
+                    item.get("episode_return_shaped_raw", item["episode_return_raw"])
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_cumulative_terminal_clip_distance": float(
+            np.mean(
+                [
+                    item.get("cumulative_terminal_clip_distance", 0.0)
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_cumulative_clip_penalty": float(
+            np.mean(
+                [
+                    item.get("cumulative_clip_penalty", 0.0)
+                    for item in episode_summaries
+                ]
+            )
         ),
         "mean_number_of_constrained_actions": float(
             np.mean(

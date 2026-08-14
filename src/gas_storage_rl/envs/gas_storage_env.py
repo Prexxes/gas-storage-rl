@@ -38,6 +38,8 @@ class GasStorageEnv(gym.Env):
         price_scale: float = 50.0,
         reward_scale: float | None = None,
         penalty_factor: float = 0.5,
+        clipping_variant: str = "v1",
+        clip_penalty_factor: float = 1.0,
         initial_inventory_mean_fraction: float | None = None,
         initial_inventory_std_fraction: float = 0.0,
         observation_features: dict[str, bool] | None = None,
@@ -53,6 +55,9 @@ class GasStorageEnv(gym.Env):
             price_scale: Price scale value.
             reward_scale: Reward scale value.
             penalty_factor: Penalty factor value.
+            clipping_variant: Clipping variant. V1 applies terminal-feasibility
+                clipping. V2 additionally penalizes terminal clip distance.
+            clip_penalty_factor: Multiplier for V2 terminal clip penalties.
             initial_inventory_mean_fraction: Initial inventory mean fraction value.
             initial_inventory_std_fraction: Initial inventory std fraction value.
             observation_features: Observation features value.
@@ -70,6 +75,12 @@ class GasStorageEnv(gym.Env):
         self.price_scale = float(price_scale)
         self.reward_scale = float(reward_scale or price_scale)
         self.penalty_factor = float(penalty_factor)
+        self.clipping_variant = str(clipping_variant).lower()
+        if self.clipping_variant not in {"v1", "v2"}:
+            raise ValueError("clipping_variant must be one of: v1, v2")
+        self.clip_penalty_factor = float(clip_penalty_factor)
+        if self.clip_penalty_factor < 0.0:
+            raise ValueError("clip_penalty_factor must be non-negative")
         self.initial_inventory_mean_fraction = initial_inventory_mean_fraction
         self.initial_inventory_std_fraction = float(initial_inventory_std_fraction)
         self.observation_features = _validate_observation_features(
@@ -87,6 +98,7 @@ class GasStorageEnv(gym.Env):
         self.episode_length = dataset.episode_length
         self.mean_training_price = float(np.mean(dataset.get_paths("train")))
         self.lambda_terminal = self.penalty_factor * self.mean_training_price
+        self.lambda_clip = self.clip_penalty_factor * self.mean_training_price
 
         high = np.array(
             [np.inf, np.inf, 1.0, 1.0, 1.0, 1.0],
@@ -223,6 +235,14 @@ class GasStorageEnv(gym.Env):
         terminal_feasibility_clipped = (
             abs(executed_action - rate_capacity_clipped_action) > 1e-8
         )
+        terminal_clip_distance = abs(
+            rate_capacity_clipped_action - executed_action
+        )
+        clip_penalty = (
+            -self.lambda_clip * terminal_clip_distance
+            if self.clipping_variant == "v2"
+            else 0.0
+        )
         previous_level = self.storage_level
         self.storage_level += executed_action
         raw_cashflow = -executed_action * price
@@ -234,12 +254,16 @@ class GasStorageEnv(gym.Env):
             terminal_penalty = -self.lambda_terminal * deviation
 
         raw_reward = raw_cashflow + terminal_penalty
-        scaled_reward = raw_reward / self.reward_scale
+        shaped_raw_reward = raw_reward + clip_penalty
+        scaled_reward = shaped_raw_reward / self.reward_scale
         info = {
+            "clipping_variant": self.clipping_variant,
             "requested_action": requested_action,
             "rate_capacity_clipped_action": rate_capacity_clipped_action,
             "executed_action": executed_action,
             "terminal_feasibility_clipped": terminal_feasibility_clipped,
+            "terminal_clip_distance": terminal_clip_distance,
+            "clip_penalty": clip_penalty,
             "storage_level": self.storage_level,
             "previous_storage_level": previous_level,
             "initial_inventory": self.initial_inventory,
@@ -249,6 +273,7 @@ class GasStorageEnv(gym.Env):
             "raw_cashflow": raw_cashflow,
             "terminal_penalty": terminal_penalty,
             "raw_reward": raw_reward,
+            "shaped_raw_reward": shaped_raw_reward,
             "scaled_reward": scaled_reward,
             "current_step": self.current_step,
             "start_index": self.current_start_index,
