@@ -14,6 +14,8 @@ environment_config:
   efficiency: 1.0
   transaction_cost: 0.0
   leakage: 0.0
+  clipping_variant: v2
+  clip_penalty_factor: 1.0
 dataset_config:
   n_pretrain_paths: 5000
   n_train_paths: 8
