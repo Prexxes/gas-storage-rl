@@ -22,6 +22,7 @@ from gas_storage_rl.baselines.perfect_foresight import PerfectForesightBaseline
 from gas_storage_rl.baselines.random_policy import RandomPolicy
 from gas_storage_rl.baselines.rule_based_policy import RuleBasedPolicy
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
+from gas_storage_rl.evaluation.backtest import build_backtest_evaluation_dataset
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
 from gas_storage_rl.evaluation.metrics import (
     summarize_episode_infos,
@@ -432,7 +433,7 @@ def validate_splits(dataset: Any, splits: list[str]) -> None:
             f"{missing}. Available splits are {sorted(available)}."
         )
     if "train" not in available:
-        raise ValueError("Benchmark policies require a train split for calibration.")
+        raise ValueError("Benchmark policies require a train split for fitting.")
 
 
 def enrich_metrics(
@@ -602,10 +603,12 @@ def run_benchmarks(
     progress_step = 1
     progress.step(progress_step, "building environment")
     dataset, storage_params, env_kwargs = build_environment(config)
+    if "backtest" in splits:
+        dataset = build_backtest_evaluation_dataset(config, dataset)
     validate_splits(dataset, splits)
 
     progress_step += 1
-    progress.step(progress_step, "fitting train-calibrated baselines")
+    progress.step(progress_step, "fitting train-based baselines")
     train_paths = dataset.get_paths("train")
     train_env = GasStorageEnv(dataset, "train", storage_params, **env_kwargs)
     rule_policy = RuleBasedPolicy.from_training_prices(

@@ -19,32 +19,6 @@ def _load_script(path: str):
     return module
 
 
-def test_historical_raw_path_length_uses_episode_plus_max_start_offset() -> None:
-    """Historical plot CLI defaults to the dataset raw path length."""
-    module = _load_script("scripts/create_historical_price_path_plots.py")
-
-    raw_path_length = module._raw_path_length(
-        {"episode_length": 365},
-        {},
-        None,
-    )
-
-    assert raw_path_length == 729
-
-
-def test_historical_raw_path_length_accepts_cli_override() -> None:
-    """Historical plot CLI accepts explicit raw path lengths."""
-    module = _load_script("scripts/create_historical_price_path_plots.py")
-
-    raw_path_length = module._raw_path_length(
-        {"episode_length": 365},
-        {"max_start_offset": 364},
-        17,
-    )
-
-    assert raw_path_length == 17
-
-
 def test_synthetic_raw_path_length_uses_episode_plus_max_start_offset() -> None:
     """Synthetic plot CLI defaults to the dataset raw path length."""
     module = _load_script("scripts/create_price_path_plots.py")
@@ -61,15 +35,6 @@ def test_synthetic_raw_path_length_uses_episode_plus_max_start_offset() -> None:
 def test_synthetic_seed_for_split_uses_dataset_split_offsets() -> None:
     """Synthetic plot CLI uses deterministic dataset split seed offsets."""
     module = _load_script("scripts/create_price_path_plots.py")
-
-    assert module._seed_for_split(123, "train") == 123
-    assert module._seed_for_split(123, "validation") == 1_000_126
-    assert module._seed_for_split(123, "test") == 2_000_126
-
-
-def test_historical_seed_for_split_uses_dataset_split_offsets() -> None:
-    """Historical plot CLI uses deterministic dataset split seed offsets."""
-    module = _load_script("scripts/create_historical_price_path_plots.py")
 
     assert module._seed_for_split(123, "train") == 123
     assert module._seed_for_split(123, "validation") == 1_000_126

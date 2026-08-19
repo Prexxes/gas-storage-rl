@@ -112,7 +112,7 @@ def assert_date_range(
         cutoff = pd.Timestamp(max_date)
         if (series.dates > cutoff).any():
             raise ValueError(
-                f"Series contains dates after calibration cutoff {cutoff.date()}"
+                f"Series contains dates after maximum date {cutoff.date()}"
             )
     if min_date is not None:
         start = pd.Timestamp(min_date)

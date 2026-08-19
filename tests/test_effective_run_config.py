@@ -40,6 +40,11 @@ def _base_config() -> dict:
             "plot_split": "validation",
             "plot_n_paths": 50,
         },
+        "backtest_data_config": {
+            "daily_backtest_csv": "data/gas_price_data_splits/daily_backtest.csv",
+            "backtest_start_date": "2025-01-01",
+            "window_stride": 2,
+        },
         "seeds": {
             "master_seed": 1,
             "dataset_seed": 2,
@@ -84,6 +89,11 @@ def test_effective_run_config_keeps_only_used_training_fields() -> None:
     assert effective["agent_config"] == {
         "algorithm_name": "ppo",
         "hyperparameters": {"policy": "MlpPolicy", "n_steps": 8},
+    }
+    assert effective["backtest_data_config"] == {
+        "daily_backtest_csv": "data/gas_price_data_splits/daily_backtest.csv",
+        "backtest_start_date": "2025-01-01",
+        "window_stride": 2,
     }
 
 

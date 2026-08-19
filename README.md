@@ -19,26 +19,30 @@ the same seasonal path through the same dataset interface.
 
 Generated price datasets are cached by default under `data/cache/{dataset_hash}/` as `pretrain.npy`, `train.npy`, `validation.npy`, `test.npy`, and `metadata.json` when `dataset_config.n_pretrain_paths` is positive. The hash depends on the environment name, path counts, episode length, dataset seed, and price-process parameters. Set `dataset_config.force_regenerate: true` to overwrite an existing matching cache. Project configs use `n_pretrain_paths: 5000` while keeping the existing train, validation, and test path counts unchanged.
 
-## Historical Calibration Pipeline
+## Historical Backtesting
 
-The repository can also calibrate synthetic prices from prepared historical CSVs while keeping calibration and backtesting chronologically separate. Monthly calibration data up to and including `2024-12-31` is used to estimate a log-seasonal calendar-month component. The twelve monthly seasonal values are evaluated as a smooth periodic Fourier curve for daily paths, avoiding hard jumps at month boundaries. Daily calibration data up to the same cutoff is deseasonalized into log residuals, then used to fit an AR(1)/OU residual process and a simple jump component from large AR(1) innovations.
+The repository keeps historical price CSVs as prepared project data, but training
+uses only the synthetic price processes above. Held-out historical backtesting
+starts at `2025-01-01`. Backtest prices are converted into separate
+rolling-window episodes and are never used to estimate or tune the synthetic
+data-generating process.
 
-Held-out historical backtesting starts at `2025-01-01`. Those backtest prices are never used for seasonality, residual, OU, or jump calibration. They are only converted into separate rolling-window episodes.
-
-Build calibrated synthetic train/validation/test paths and historical backtest windows:
+Build synthetic train/validation/test paths and historical backtest windows:
 
 ```bash
-PYTHONPATH=src python -m gas_storage_rl.data.build_historical_datasets --config configs/historical_debug.yaml
+PYTHONPATH=src python -m gas_storage_rl.data.build_historical_datasets --config configs/debug.yaml
 ```
 
 The synthetic splits are stored under `data/cache/{dataset_hash}/`. Historical backtest windows are stored separately under `data/cache/backtest/{dataset_hash}/` as `backtest.npy` plus metadata with each episode start and end date.
+The source CSV and rolling-window stride are configured independently from the
+price process:
 
-Historically calibrated synthetic paths remain log-additive and strictly positive.
-They support three environment variants:
-
-- `historical_deterministic`: calibrated monthly log seasonality only
-- `historical_ou`: calibrated seasonality plus AR(1)/OU residual noise
-- `historical_jump`: calibrated seasonality plus AR(1)/OU residual noise and jumps
+```yaml
+backtest_data_config:
+  daily_backtest_csv: data/gas_price_data_splits/daily_backtest_tradingdays_2025_2026.csv
+  backtest_start_date: "2025-01-01"
+  window_stride: 1
+```
 
 ## Storage Dynamics
 
@@ -139,7 +143,7 @@ Run a sequential group with `training_config.n_seeds` independent training seeds
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
-  --config configs/historical_jump_c200.yaml \
+  --config configs/jump_c200.yaml \
   --algorithm ppo
 ```
 
@@ -147,7 +151,7 @@ Override the configured group size when needed:
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.training.run_experiment_group \
-  --config configs/historical_jump_c200.yaml \
+  --config configs/jump_c200.yaml \
   --algorithm ppo \
   --n-seeds 3
 ```
@@ -339,9 +343,9 @@ under `runs/benchmarks/<timestamp>-<config_name>-<config_hash>/` with `config.js
 long-format `benchmark_metrics.csv` with one row per benchmark and split. The fitted
 LSMC policy is stored as `lsmc_policy.pkl`; when the oracle-cloned benchmark is
 included, its policy is stored as `oracle_cloned_policy.pt`. These artifacts allow
-diagnostic comparison plots without refitting benchmark policies. The same runner works
-for historically calibrated synthetic price configs because it evaluates the dataset
-produced by the selected config.
+diagnostic comparison plots without refitting benchmark policies. The same runner can
+evaluate held-out historical backtest windows with `--split backtest` when
+`backtest_data_config` is present in the selected config.
 
 For learning-curve plots, benchmark metrics can also be expanded onto the same
 training-step coordinates as RL `evaluations.csv`. When `training_config.total_timesteps`
@@ -587,16 +591,5 @@ python scripts/create_price_path_plots.py --config configs/ou_c30.yaml --split v
 python scripts/create_price_path_plots.py --config configs/ou_c30.yaml --split test --n-paths 50
 ```
 
-Create raw 729-day historically calibrated synthetic price-path plots:
-
-```bash
-python scripts/create_historical_price_path_plots.py \
-  --config configs/historical_ou_c30.yaml \
-  --split train \
-  --n-paths 50
-```
-
 The plotted environment is taken from the selected config. Raw price-path plots include
 a dashed vertical line at simulation day 365, marking the beginning of the second year.
-Historical backtest price paths are excluded by default and are plotted only with
-`--include-backtest`.

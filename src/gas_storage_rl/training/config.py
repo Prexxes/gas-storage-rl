@@ -10,7 +10,6 @@ import yaml
 
 from gas_storage_rl.data.path_dataset import PathDataset, load_or_generate_price_dataset
 from gas_storage_rl.envs.storage_dynamics import StorageParams
-from gas_storage_rl.prices.calibration import calibrate_historical_price_process
 from gas_storage_rl.prices.generators import PriceGeneratorConfig
 
 
@@ -74,6 +73,7 @@ def build_effective_run_config(
         "environment_config": dict(config["environment_config"]),
         "dataset_config": _effective_dataset_config(config["dataset_config"]),
         "price_process_config": _effective_price_process_config(config),
+        "backtest_data_config": _effective_backtest_data_config(config),
         "training_config": _effective_training_config(
             config["training_config"],
             seed_index,
@@ -187,7 +187,7 @@ def build_environment(
 
 
 def _build_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
-    """Returns fallback or historically calibrated price-process parameters.
+    """Returns configured synthetic price-process parameters.
     
     Args:
         config: Experiment configuration dictionary.
@@ -204,29 +204,7 @@ def _build_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
             config["environment_config"]["environment_name"],
         )
         return price_config
-
-    calibrated_config = config.get("calibrated_price_process_config", {})
-    if not bool(calibrated_config.get("enabled", False)):
-        return dict(config["price_process_config"])
-
-    historical_config = config["historical_data_config"]
-    calibration = calibrate_historical_price_process(
-        historical_config["monthly_calibration_csv"],
-        historical_config["daily_calibration_csv"],
-        calibration_end_date=historical_config.get(
-            "calibration_end_date",
-            "2024-12-31",
-        ),
-        monthly_price_column=historical_config.get("monthly_price_column"),
-        daily_price_column=historical_config.get("daily_calibration_price_column"),
-        jump_threshold_sigma=float(calibrated_config.get("jump_threshold_sigma", 3.0)),
-    )
-    price_config = dict(calibration.to_price_params())
-    price_config["_environment_name"] = calibrated_config.get(
-        "environment_name",
-        "historical_calibrated",
-    )
-    return price_config
+    return dict(price_process_config)
 
 
 def _effective_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -249,30 +227,29 @@ def _effective_price_process_config(config: dict[str, Any]) -> dict[str, Any]:
         "environment_name": environment_name,
         "parameters": price_config,
     }
-    calibrated_config = config.get("calibrated_price_process_config", {})
-    if bool(calibrated_config.get("enabled", False)):
-        historical_config = config["historical_data_config"]
-        effective["source"] = "historical_calibration"
-        effective["calibration"] = {
-            "monthly_calibration_csv": historical_config["monthly_calibration_csv"],
-            "daily_calibration_csv": historical_config["daily_calibration_csv"],
-            "calibration_end_date": historical_config.get(
-                "calibration_end_date",
-                "2024-12-31",
-            ),
-            "jump_threshold_sigma": float(
-                calibrated_config.get("jump_threshold_sigma", 3.0)
-            ),
-        }
-        if historical_config.get("monthly_price_column") is not None:
-            effective["calibration"]["monthly_price_column"] = historical_config[
-                "monthly_price_column"
-            ]
-        if historical_config.get("daily_calibration_price_column") is not None:
-            effective["calibration"]["daily_price_column"] = historical_config[
-                "daily_calibration_price_column"
-            ]
     return effective
+
+
+def _effective_backtest_data_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Returns historical backtest settings used by holdout evaluations.
+    
+    Args:
+        config: Experiment configuration dictionary.
+    
+    Returns:
+        Backtest data configuration, or an empty dictionary when absent.
+
+    """
+    backtest_config = config.get("backtest_data_config")
+    if backtest_config is None:
+        return {}
+    keys = (
+        "daily_backtest_csv",
+        "backtest_start_date",
+        "daily_backtest_price_column",
+        "window_stride",
+    )
+    return {key: backtest_config[key] for key in keys if key in backtest_config}
 
 
 def _effective_dataset_config(dataset_config: dict[str, Any]) -> dict[str, Any]:

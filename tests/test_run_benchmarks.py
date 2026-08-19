@@ -68,6 +68,46 @@ def _environment() -> tuple[PathDataset, StorageParams, dict[str, Any]]:
     return dataset, StorageParams(capacity=2.0), {"seed": 1}
 
 
+def _backtest_config(tmp_path: Path) -> dict[str, Any]:
+    """Returns a minimal config with held-out historical backtest data."""
+    config = _config(tmp_path)
+    backtest_csv = tmp_path / "backtest.csv"
+    backtest_csv.write_text(
+        "date,the_day_ahead_eur_mwh,split\n"
+        "2025-01-02,40.0,historical_backtest\n"
+        "2025-01-03,41.0,historical_backtest\n"
+        "2025-01-06,42.0,historical_backtest\n",
+        encoding="utf-8",
+    )
+    config.update(
+        {
+            "environment_config": {
+                "environment_name": "deterministic",
+                "capacity": 2,
+                "episode_length": 3,
+                "initial_inventory": 0.0,
+                "initial_inventory_mean_fraction": 0.30,
+                "initial_inventory_std_fraction": 0.05,
+            },
+            "dataset_config": {
+                "n_train_paths": 2,
+                "n_validation_paths": 2,
+                "n_test_paths": 2,
+                "cache_dir": str(tmp_path / "cache"),
+                "backtest_cache_dir": str(tmp_path / "backtest-cache"),
+                "use_cache": True,
+                "force_regenerate": False,
+            },
+            "backtest_data_config": {
+                "daily_backtest_csv": str(backtest_csv),
+                "backtest_start_date": "2025-01-01",
+                "window_stride": 1,
+            },
+        }
+    )
+    return config
+
+
 def test_main_logs_train_and_validation_by_default(
     monkeypatch,
     tmp_path: Path,
@@ -143,6 +183,38 @@ def test_main_logs_test_only_when_explicit(
     )
     assert len(rows) == 4
     assert {row["split"] for row in rows} == {"test"}
+
+
+def test_main_can_log_backtest_split(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Benchmark CLI can evaluate policies on held-out historical backtest data."""
+    config = _backtest_config(tmp_path)
+    monkeypatch.setattr(run_benchmarks, "load_config", lambda _: config)
+    monkeypatch.setattr(run_benchmarks, "build_environment", lambda _: _environment())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_benchmarks", "--config", "configs/debug.yaml", "--split", "backtest"],
+    )
+
+    run_benchmarks.main()
+
+    run_dir = next((tmp_path / "runs" / "benchmarks").iterdir())
+    assert (run_dir / "benchmark_metrics_backtest.json").exists()
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["splits"] == ["backtest"]
+
+    payload = json.loads(
+        (run_dir / "benchmark_metrics_backtest.json").read_text(encoding="utf-8")
+    )
+    assert set(payload["benchmarks"]) == {
+        "random",
+        "rule_based",
+        "lsmc",
+        "perfect_foresight",
+    }
 
 
 def test_main_can_log_perfect_foresight_trajectories(

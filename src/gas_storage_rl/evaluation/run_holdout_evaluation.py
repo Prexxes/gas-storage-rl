@@ -8,13 +8,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
-from gas_storage_rl.data.path_dataset import (
-    PathDataset,
-    load_or_generate_historical_backtest_dataset,
-)
+from gas_storage_rl.data.path_dataset import PathDataset
 from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
+from gas_storage_rl.evaluation.backtest import build_backtest_evaluation_dataset
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
 from gas_storage_rl.logging.progress import CliProgress
 from gas_storage_rl.training.config import build_environment, load_config
@@ -42,7 +38,7 @@ def main() -> None:
 
     if args.split == "backtest":
         progress.step(3, "building backtest dataset")
-        dataset = _build_backtest_evaluation_dataset(config, dataset)
+        dataset = build_backtest_evaluation_dataset(config, dataset)
     else:
         progress.step(3, f"using synthetic {args.split} split")
 
@@ -76,65 +72,6 @@ def main() -> None:
         )
     progress.finish("done")
     print(json.dumps({"output": str(run_dir / output_name), **metrics}, indent=2))
-
-
-def _build_backtest_evaluation_dataset(
-    config: dict[str, Any],
-    synthetic_dataset: PathDataset,
-) -> PathDataset:
-    """Combines training paths with held-out historical backtest windows.
-    
-    Args:
-        config: Experiment configuration dictionary.
-        synthetic_dataset: Synthetic dataset value.
-    
-    Returns:
-        Build backtest evaluation dataset result.
-
-    """
-    historical_config = config["historical_data_config"]
-    dataset_config = config["dataset_config"]
-    calibrated_config = config.get("calibrated_price_process_config", {})
-    backtest_dataset = load_or_generate_historical_backtest_dataset(
-        historical_config["daily_backtest_csv"],
-        episode_length=int(config["environment_config"]["episode_length"]),
-        cache_dir=dataset_config.get("backtest_cache_dir", "data/cache/backtest"),
-        use_cache=bool(dataset_config.get("use_cache", True)),
-        force_regenerate=bool(dataset_config.get("force_regenerate", False)),
-        window_stride=int(calibrated_config.get("backtest_window_stride", 1)),
-        backtest_start_date=historical_config.get("backtest_start_date", "2025-01-01"),
-        daily_price_column=historical_config.get("daily_backtest_price_column"),
-    )
-    env_config = config["environment_config"]
-    rng = np.random.default_rng(int(config["seeds"]["eval_seed"]) + 5_000_003)
-    backtest_fractions = rng.normal(
-        float(env_config.get("initial_inventory_mean_fraction", 0.30)),
-        float(env_config.get("initial_inventory_std_fraction", 0.05)),
-        size=len(backtest_dataset.get_paths("backtest")),
-    )
-    backtest_inventories = (
-        np.clip(backtest_fractions, 0.0, 1.0) * float(env_config["capacity"])
-    )
-    return PathDataset(
-        {
-            "train": synthetic_dataset.get_paths("train"),
-            "backtest": backtest_dataset.get_paths("backtest"),
-        },
-        {
-            "train": synthetic_dataset.seeds_by_split["train"],
-            "backtest": 0,
-        },
-        {
-            "backtest": backtest_dataset.date_ranges_by_split["backtest"],
-        },
-        initial_inventories_by_split={
-            "train": synthetic_dataset.get_initial_inventories(
-                "train",
-                float(env_config.get("initial_inventory", 0.0)),
-            ),
-            "backtest": backtest_inventories,
-        },
-    )
 
 
 def _load_model(algorithm_name: str, model_path: Path, env: GasStorageEnv) -> Any:

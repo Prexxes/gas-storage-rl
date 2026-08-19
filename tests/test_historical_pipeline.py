@@ -1,4 +1,4 @@
-"""Tests for historical calibration and backtest dataset generation."""
+"""Tests for historical CSV loading and backtest dataset generation."""
 
 from __future__ import annotations
 
@@ -8,16 +8,25 @@ import numpy as np
 import pandas as pd
 
 from gas_storage_rl.data.path_dataset import (
+    PathDataset,
     build_historical_backtest_paths,
     load_or_generate_historical_backtest_dataset,
 )
-from gas_storage_rl.prices.calibration import calibrate_historical_price_process
-from gas_storage_rl.prices.generators import (
-    calibrated_monthly_log_curve,
-    generate_price_paths,
+from gas_storage_rl.envs.storage_dynamics import StorageParams
+from gas_storage_rl.evaluation.backtest import (
+    build_backtest_evaluation_dataset,
+    evaluate_policy_on_backtest,
 )
 from gas_storage_rl.prices.historical_data import load_historical_price_csv
-from gas_storage_rl.prices.seasonal import fit_monthly_log_seasonality
+
+
+class ZeroPolicy:
+    """Policy that always requests no storage action."""
+
+    def predict(self, observation: np.ndarray, deterministic: bool = True):
+        """Returns the no-op action in the SB3 policy format."""
+        del observation, deterministic
+        return np.array([0.0], dtype=np.float32), None
 
 
 def test_load_historical_price_csv_infers_price_column(tmp_path) -> None:
@@ -34,124 +43,6 @@ def test_load_historical_price_csv_infers_price_column(tmp_path) -> None:
 
     assert series.price_column == "the_day_ahead_eur_mwh"
     assert list(series.prices) == [41.0, 40.0]
-
-
-def test_monthly_log_seasonality_has_zero_mean_adjustments(tmp_path) -> None:
-    """Monthly calibration estimates one zero-mean adjustment per month."""
-    csv_path = _write_monthly_csv(tmp_path)
-
-    series = load_historical_price_csv(csv_path, expected_split="calibration")
-    seasonality = fit_monthly_log_seasonality(series)
-
-    assert len(seasonality.monthly_log_adjustments) == 12
-    assert np.isclose(np.mean(seasonality.monthly_log_adjustments), 0.0)
-
-
-def test_historical_calibration_excludes_post_cutoff_data(tmp_path) -> None:
-    """Calibration rejects daily data beyond the configured cutoff."""
-    monthly_csv = _write_monthly_csv(tmp_path)
-    daily_csv = tmp_path / "daily.csv"
-    daily_csv.write_text(
-        "date,the_day_ahead_eur_mwh,split\n"
-        "2024-12-30,50.0,calibration\n"
-        "2025-01-01,51.0,calibration\n",
-        encoding="utf-8",
-    )
-
-    try:
-        calibrate_historical_price_process(
-            monthly_csv,
-            daily_csv,
-            calibration_end_date="2024-12-31",
-        )
-    except ValueError as exc:
-        assert "after calibration cutoff" in str(exc)
-    else:
-        raise AssertionError("Expected calibration cutoff validation to fail")
-
-
-def test_calibrated_generator_produces_positive_splits(tmp_path) -> None:
-    """Calibrated parameters can drive synthetic positive path generation."""
-    monthly_csv = _write_monthly_csv(tmp_path)
-    daily_csv = _write_daily_calibration_csv(tmp_path)
-
-    calibration = calibrate_historical_price_process(monthly_csv, daily_csv)
-    paths = generate_price_paths(
-        "historical_calibrated",
-        n_paths=3,
-        episode_length=20,
-        seed=7,
-        params=calibration.to_price_params(),
-    )
-
-    assert paths.shape == (3, 20)
-    assert np.all(paths > 0.0)
-    assert np.allclose(
-        paths,
-        generate_price_paths(
-            "historical_calibrated",
-            n_paths=3,
-            episode_length=20,
-            seed=7,
-            params=calibration.to_price_params(),
-        ),
-    )
-
-
-def test_historical_environment_variants_use_calibrated_components(tmp_path) -> None:
-    """Historical environment names compose seasonality, OU noise, and jumps."""
-    monthly_csv = _write_monthly_csv(tmp_path)
-    daily_csv = _write_daily_calibration_csv(tmp_path)
-    calibration = calibrate_historical_price_process(monthly_csv, daily_csv)
-    params = calibration.to_price_params()
-
-    deterministic = generate_price_paths(
-        "historical_deterministic",
-        n_paths=3,
-        episode_length=20,
-        seed=7,
-        params=params,
-    )
-    ou_paths = generate_price_paths(
-        "historical_ou",
-        n_paths=3,
-        episode_length=20,
-        seed=7,
-        params=params,
-    )
-    jump_paths = generate_price_paths(
-        "historical_jump",
-        n_paths=3,
-        episode_length=20,
-        seed=7,
-        params={**params, "jump_probability": 1.0, "jump_mean": 0.2, "jump_std": 0.0},
-    )
-
-    assert np.allclose(deterministic[0], deterministic[1])
-    assert not np.allclose(ou_paths[0], ou_paths[1])
-    assert np.all(jump_paths > 0.0)
-    assert not np.allclose(jump_paths, ou_paths)
-
-
-def test_historical_seasonality_uses_smooth_fourier_curve_by_default() -> None:
-    """Fourier seasonality avoids hard monthly jumps in daily curves."""
-    monthly_adjustments = [0.5, -0.5, 0.2, 0.1, 0.0, -0.1, -0.2, 0.1, 0.2, 0.0, -0.1, -0.2]
-
-    step_curve = calibrated_monthly_log_curve(
-        episode_length=40,
-        base_log_price=0.0,
-        monthly_log_seasonality=monthly_adjustments,
-        method="step",
-    )
-    fourier_curve = calibrated_monthly_log_curve(
-        episode_length=40,
-        base_log_price=0.0,
-        monthly_log_seasonality=monthly_adjustments,
-    )
-
-    step_month_change = abs(step_curve[31] - step_curve[30])
-    fourier_month_change = abs(fourier_curve[31] - fourier_curve[30])
-    assert fourier_month_change < step_month_change
 
 
 def test_historical_backtest_windows_respect_start_date_and_cache(tmp_path) -> None:
@@ -186,34 +77,109 @@ def test_historical_backtest_windows_respect_start_date_and_cache(tmp_path) -> N
     assert dataset.date_ranges_by_split["backtest"][1]["start_date"] == "2025-01-06"
 
 
-def _write_monthly_csv(tmp_path) -> Path:
-    """Writes two years of simple monthly calibration prices."""
-    csv_path = tmp_path / "monthly.csv"
-    dates = pd.date_range("2023-01-01", periods=24, freq="MS")
-    prices = 50.0 + 5.0 * np.cos(2.0 * np.pi * (dates.month.to_numpy() - 1) / 12.0)
+def test_backtest_dataset_preserves_synthetic_splits(tmp_path) -> None:
+    """Backtest augmentation keeps existing synthetic paths and metadata."""
+    config = _backtest_config(tmp_path)
+    synthetic_dataset = PathDataset(
+        {
+            "train": np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
+            "validation": np.array([[2.0, 3.0, 4.0]], dtype=np.float32),
+            "test": np.array([[3.0, 4.0, 5.0]], dtype=np.float32),
+        },
+        {"train": 1, "validation": 2, "test": 3},
+        {
+            "train": [{"start_date": "2024-01-01", "end_date": "2024-01-03"}],
+            "validation": [{"start_date": "2024-02-01", "end_date": "2024-02-03"}],
+            "test": [{"start_date": "2024-03-01", "end_date": "2024-03-03"}],
+        },
+    )
+
+    dataset = build_backtest_evaluation_dataset(config, synthetic_dataset)
+
+    assert set(dataset.paths_by_split) == {"train", "validation", "test", "backtest"}
+    assert dataset.get_paths("train").tolist() == [[1.0, 2.0, 3.0]]
+    assert dataset.get_paths("backtest").shape == (2, 3)
+    assert dataset.date_ranges_by_split["backtest"][0] == {
+        "start_date": "2025-01-02",
+        "end_date": "2025-01-06",
+    }
+
+
+def test_evaluate_policy_on_backtest_accepts_any_predict_policy(tmp_path) -> None:
+    """Backtest evaluation works for an arbitrary SB3-style policy object."""
+    config = _backtest_config(tmp_path)
+    synthetic_dataset = PathDataset(
+        {"train": np.array([[1.0, 2.0, 3.0]], dtype=np.float32)},
+        {"train": 1},
+    )
+
+    metrics, trajectories = evaluate_policy_on_backtest(
+        ZeroPolicy(),
+        config,
+        synthetic_dataset=synthetic_dataset,
+        storage_params=StorageParams(capacity=30.0),
+        env_kwargs={"price_scale": 50.0, "reward_scale": 50.0, "seed": 1},
+    )
+
+    assert metrics["split"] == "backtest"
+    assert len(trajectories) == 2
+
+
+def _write_backtest_csv(tmp_path: Path) -> Path:
+    """Writes a tiny held-out historical backtest CSV."""
+    csv_path = tmp_path / "backtest.csv"
     frame = pd.DataFrame(
         {
-            "date": dates,
-            "ngc_the_eur_mwh": prices,
-            "split": "calibration",
+            "date": pd.bdate_range("2025-01-02", periods=4),
+            "the_day_ahead_eur_mwh": [50.0, 51.0, 52.0, 53.0],
+            "split": "historical_backtest",
         }
     )
     frame.to_csv(csv_path, index=False)
     return csv_path
 
 
-def _write_daily_calibration_csv(tmp_path) -> Path:
-    """Writes deterministic daily calibration prices through 2024."""
-    csv_path = tmp_path / "daily.csv"
-    dates = pd.date_range("2024-01-01", periods=90, freq="D")
-    trend = np.linspace(-0.05, 0.05, len(dates))
-    prices = 50.0 * np.exp(trend)
-    frame = pd.DataFrame(
-        {
-            "date": dates,
-            "the_day_ahead_eur_mwh": prices,
-            "split": "calibration",
-        }
+def _backtest_config(tmp_path: Path) -> dict:
+    """Returns a minimal config with synthetic training and backtest data."""
+    backtest_csv = _write_backtest_csv(tmp_path)
+    return {
+        "environment_config": {
+            "environment_name": "deterministic",
+            "capacity": 30,
+            "episode_length": 3,
+            "initial_inventory": 0.0,
+            "initial_inventory_mean_fraction": 0.30,
+            "initial_inventory_std_fraction": 0.05,
+        },
+        "dataset_config": {
+            "n_train_paths": 1,
+            "n_validation_paths": 1,
+            "n_test_paths": 1,
+            "cache_dir": str(tmp_path / "cache"),
+            "backtest_cache_dir": str(tmp_path / "backtest-cache"),
+            "use_cache": True,
+            "force_regenerate": False,
+        },
+        "backtest_data_config": {
+            "daily_backtest_csv": str(backtest_csv),
+            "backtest_start_date": "2025-01-01",
+            "window_stride": 1,
+        },
+        "price_process_config": {
+            "seasonal_level": 2.0,
+            "seasonal_amplitude": 1.0,
+            "seasonal_period": 365.0,
+        },
+        "seeds": {"dataset_seed": 1, "eval_seed": 2},
+    }
+
+
+def test_retained_calibration_split_csv_files_exist() -> None:
+    """Prepared calibration CSV files are retained as project data."""
+    monthly_csv = Path("data/gas_price_data_splits/monthly_calibration_2016_2024.csv")
+    daily_csv = Path(
+        "data/gas_price_data_splits/daily_calibration_calendar_ffill_2022_2024.csv"
     )
-    frame.to_csv(csv_path, index=False)
-    return csv_path
+
+    assert monthly_csv.exists()
+    assert daily_csv.exists()
