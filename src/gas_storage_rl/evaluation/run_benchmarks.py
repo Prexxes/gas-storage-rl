@@ -364,6 +364,7 @@ def benchmark_metadata(
     hash_value: str,
     splits: list[str],
     writes_perfect_foresight_trajectories: bool,
+    includes_lsmc: bool,
     includes_oracle_cloned_policy: bool,
     writes_final_episode_metrics: bool,
     timeline_total_timesteps: int | None,
@@ -377,6 +378,7 @@ def benchmark_metadata(
         hash_value: Hash value value.
         splits: Dataset split names.
         writes_perfect_foresight_trajectories: Writes perfect foresight trajectories value.
+        includes_lsmc: Includes LSMC baseline value.
         includes_oracle_cloned_policy: Includes oracle cloned policy value.
         writes_final_episode_metrics: Writes final episode metrics value.
         timeline_total_timesteps: Timeline total timesteps value.
@@ -403,6 +405,7 @@ def benchmark_metadata(
         "writes_perfect_foresight_trajectories": (
             writes_perfect_foresight_trajectories
         ),
+        "includes_lsmc": includes_lsmc,
         "includes_oracle_cloned_policy": includes_oracle_cloned_policy,
         "writes_final_episode_metrics": writes_final_episode_metrics,
         "timeline_total_timesteps": timeline_total_timesteps,
@@ -577,6 +580,7 @@ def run_benchmarks(
     config_name: str,
     splits: list[str],
     write_perfect_foresight_trajectories: bool = False,
+    include_lsmc: bool = False,
     include_oracle_cloned_policy: bool = False,
     write_final_episode_metrics: bool = False,
     random_policy_seeds: list[int] | None = None,
@@ -589,6 +593,7 @@ def run_benchmarks(
         config_name: Human-readable configuration name.
         splits: Dataset split names.
         write_perfect_foresight_trajectories: Write perfect foresight trajectories value.
+        include_lsmc: Include LSMC baseline value.
         include_oracle_cloned_policy: Include oracle cloned policy value.
         write_final_episode_metrics: Write final episode metrics value.
         random_policy_seeds: Random policy seeds value.
@@ -598,7 +603,9 @@ def run_benchmarks(
         Benchmark metrics grouped by split.
 
     """
-    progress_total = 3 + len(splits) + int(include_oracle_cloned_policy)
+    progress_total = (
+        3 + len(splits) + int(include_lsmc) + int(include_oracle_cloned_policy)
+    )
     progress = CliProgress("run_benchmarks", total=progress_total, enabled=show_progress)
     progress_step = 1
     progress.step(progress_step, "building environment")
@@ -619,28 +626,32 @@ def run_benchmarks(
         withdrawal_rate=storage_params.withdrawal_rate,
         price_scale=float(env_kwargs.get("price_scale", 50.0)),
     )
-    action_grid = np.asarray(
-        config.get("evaluation_config", {}).get(
-            "lsmc_action_grid",
-            [-1.0, -0.5, 0.0, 0.5, 1.0],
-        ),
-        dtype=np.float64,
-    )
-    lsmc = LSMCBenchmark(
-        storage_params,
-        train_env.lambda_terminal,
-        action_grid=action_grid,
-        n_inventory_levels=int(
-            config.get("evaluation_config", {}).get("lsmc_n_inventory_levels", 21)
-        ),
-    ).fit(
-        train_paths,
-        dataset.get_start_dates("train"),
-        dataset.get_initial_inventories(
-            "train",
-            storage_params.initial_inventory,
-        ),
-    )
+    lsmc = None
+    if include_lsmc:
+        progress_step += 1
+        progress.step(progress_step, "fitting LSMC baseline")
+        action_grid = np.asarray(
+            config.get("evaluation_config", {}).get(
+                "lsmc_action_grid",
+                [-1.0, -0.5, 0.0, 0.5, 1.0],
+            ),
+            dtype=np.float64,
+        )
+        lsmc = LSMCBenchmark(
+            storage_params,
+            train_env.lambda_terminal,
+            action_grid=action_grid,
+            n_inventory_levels=int(
+                config.get("evaluation_config", {}).get("lsmc_n_inventory_levels", 21)
+            ),
+        ).fit(
+            train_paths,
+            dataset.get_start_dates("train"),
+            dataset.get_initial_inventories(
+                "train",
+                storage_params.initial_inventory,
+            ),
+        )
     perfect_foresight = PerfectForesightBaseline(
         storage_params,
         train_env.lambda_terminal,
@@ -666,7 +677,9 @@ def run_benchmarks(
     random_policy_seeds = random_policy_seeds or [int(config["seeds"]["eval_seed"])]
     if oracle_training_summary is not None:
         output["oracle_cloned_policy_training"] = oracle_training_summary
-    output["_benchmark_artifacts"] = {"lsmc": lsmc}
+    output["_benchmark_artifacts"] = {}
+    if lsmc is not None:
+        output["_benchmark_artifacts"]["lsmc"] = lsmc
     if oracle_cloned_policy is not None:
         output["_benchmark_artifacts"]["oracle_cloned_policy"] = oracle_cloned_policy
     if write_perfect_foresight_trajectories:
@@ -717,24 +730,30 @@ def run_benchmarks(
                     date_ranges,
                 )
             )
-        lsmc_metrics, lsmc_trajectories = evaluate_policy_on_paths(
-            env,
-            LSMCPolicyAdapter(lsmc, env),
-        )
-        if write_final_episode_metrics:
-            final_episode_rows.extend(
-                trajectory_episode_rows(
-                    lsmc_trajectories,
-                    "lsmc",
-                    split,
-                    date_ranges,
-                )
-            )
         split_paths = dataset.get_paths(split)
         split_inventories = dataset.get_initial_inventories(
             split,
             storage_params.initial_inventory,
         )
+        split_benchmarks = {
+            "random": random_metrics,
+            "rule_based": rule_metrics,
+        }
+        if lsmc is not None:
+            lsmc_metrics, lsmc_trajectories = evaluate_policy_on_paths(
+                env,
+                LSMCPolicyAdapter(lsmc, env),
+            )
+            split_benchmarks["lsmc"] = lsmc_metrics
+            if write_final_episode_metrics:
+                final_episode_rows.extend(
+                    trajectory_episode_rows(
+                        lsmc_trajectories,
+                        "lsmc",
+                        split,
+                        date_ranges,
+                    )
+                )
         perfect_foresight_trajectories = perfect_foresight.solve_paths(
             split_paths,
             split,
@@ -749,16 +768,12 @@ def run_benchmarks(
                     split,
                 )
             )
-        output["splits"][split] = {
-            "random": random_metrics,
-            "rule_based": rule_metrics,
-            "lsmc": lsmc_metrics,
-            "perfect_foresight": perfect_foresight.evaluate_paths(
-                split_paths,
-                split_inventories,
-                split_inventories,
-            ),
-        }
+        split_benchmarks["perfect_foresight"] = perfect_foresight.evaluate_paths(
+            split_paths,
+            split_inventories,
+            split_inventories,
+        )
+        output["splits"][split] = split_benchmarks
         if (
             oracle_cloned_policy is not None
             and split in ORACLE_CLONING_EVALUATION_SPLITS
@@ -801,6 +816,7 @@ def log_benchmark_results(
     config_name: str,
     splits: list[str],
     write_perfect_foresight_trajectories: bool = False,
+    include_lsmc: bool = False,
     include_oracle_cloned_policy: bool = False,
     write_final_episode_metrics: bool = False,
     timeline_total_timesteps: int | None = None,
@@ -814,6 +830,7 @@ def log_benchmark_results(
         config_name: Human-readable configuration name.
         splits: Dataset split names.
         write_perfect_foresight_trajectories: Write perfect foresight trajectories value.
+        include_lsmc: Include LSMC baseline value.
         include_oracle_cloned_policy: Include oracle cloned policy value.
         write_final_episode_metrics: Write final episode metrics value.
         timeline_total_timesteps: Timeline total timesteps value.
@@ -838,6 +855,7 @@ def log_benchmark_results(
             hash_value,
             splits,
             write_perfect_foresight_trajectories,
+            include_lsmc,
             include_oracle_cloned_policy,
             write_final_episode_metrics,
             timeline_total_timesteps,
@@ -910,7 +928,7 @@ def log_benchmark_results(
 
 
 def main() -> None:
-    """Runs random, rule-based, LSMC, and perfect-foresight benchmarks."""
+    """Runs benchmark baselines."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument(
@@ -936,6 +954,14 @@ def main() -> None:
         help=(
             "Train an observation-only neural policy on pretrain and train "
             "perfect-foresight trajectories, then report it on validation/test."
+        ),
+    )
+    parser.add_argument(
+        "--include-lsmc",
+        action="store_true",
+        help=(
+            "Fit and report the LSMC baseline. By default the benchmark runner "
+            "skips LSMC and only reports random, rule-based, and perfect foresight."
         ),
     )
     parser.add_argument(
@@ -991,6 +1017,7 @@ def main() -> None:
         config_name,
         splits,
         write_perfect_foresight_trajectories=args.write_perfect_foresight_trajectories,
+        include_lsmc=args.include_lsmc,
         include_oracle_cloned_policy=args.include_oracle_cloned_policy,
         write_final_episode_metrics=args.write_final_episode_metrics,
         random_policy_seeds=args.random_policy_seed,
@@ -1002,6 +1029,7 @@ def main() -> None:
         config_name,
         splits,
         write_perfect_foresight_trajectories=args.write_perfect_foresight_trajectories,
+        include_lsmc=args.include_lsmc,
         include_oracle_cloned_policy=args.include_oracle_cloned_policy,
         write_final_episode_metrics=args.write_final_episode_metrics,
         timeline_total_timesteps=timeline_total_timesteps,

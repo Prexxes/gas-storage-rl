@@ -351,7 +351,8 @@ PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config confi
 ```
 
 By default, benchmark runs evaluate and log the `train` and `validation` splits only.
-The synthetic `test` split is evaluated only when requested explicitly:
+They include `random`, `rule_based`, and `perfect_foresight`. The synthetic `test`
+split is evaluated only when requested explicitly:
 
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config configs/debug.yaml --split test
@@ -360,9 +361,9 @@ PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks --config confi
 Multiple splits can be requested by repeating `--split`. Benchmark outputs are stored
 under `runs/benchmarks/<timestamp>-<config_name>-<config_hash>/` with `config.json`,
 `metadata.json`, one `benchmark_metrics_<split>.json` file per evaluated split, and a
-long-format `benchmark_metrics.csv` with one row per benchmark and split. The fitted
-LSMC policy is stored as `lsmc_policy.pkl`; when the oracle-cloned benchmark is
-included, its policy is stored as `oracle_cloned_policy.pt`. These artifacts allow
+long-format `benchmark_metrics.csv` with one row per benchmark and split. Optional
+policy artifacts are stored only for requested baselines: `lsmc_policy.pkl` for LSMC
+and `oracle_cloned_policy.pt` for the oracle-cloned benchmark. These artifacts allow
 diagnostic comparison plots without refitting benchmark policies. The same runner can
 evaluate held-out historical backtest windows with `--split backtest` when
 `backtest_data_config` is present in the selected config.
@@ -377,8 +378,8 @@ and `training_config.eval_freq` are present in the config, this writes
 ```
 
 These rows are benchmark reference lines, not benchmark training curves. The values are
-constant across steps because `random`, `rule_based`, `lsmc`, `perfect_foresight`, and
-`oracle_cloned_policy` are evaluated after their respective setup or fit procedure.
+constant across steps because `random`, `rule_based`, `perfect_foresight`, and any
+requested optional baselines are evaluated after their respective setup or fit procedure.
 `perfect_foresight` should be interpreted as an oracle upper bound because it solves
 each requested episode with full future price information.
 
@@ -429,6 +430,15 @@ The random-policy aggregate in `benchmark_metrics.csv` and
 `benchmark_evaluations.csv` is then computed over all requested random seeds and all
 episodes. `final_episode_metrics_<split>.csv` keeps the seed column so path-level plots
 can either show individual random draws or aggregate them later.
+
+The LSMC baseline is optional:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_benchmarks \
+  --config configs/debug.yaml \
+  --split validation \
+  --include-lsmc
+```
 
 LSMC uses `evaluation_config.lsmc_action_grid` and
 `evaluation_config.lsmc_n_inventory_levels`. Increasing the number of inventory levels

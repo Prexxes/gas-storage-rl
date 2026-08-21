@@ -129,26 +129,66 @@ def test_main_logs_train_and_validation_by_default(
     run_dir = benchmark_dirs[0]
     assert (run_dir / "benchmark_metrics_train.json").exists()
     assert (run_dir / "benchmark_metrics_validation.json").exists()
-    assert (run_dir / "lsmc_policy.pkl").exists()
+    assert not (run_dir / "lsmc_policy.pkl").exists()
     assert not (run_dir / "benchmark_metrics_test.json").exists()
 
     metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["splits"] == ["train", "validation"]
     assert metadata["contains_test_split"] is False
+    assert metadata["includes_lsmc"] is False
 
     rows = list(
         csv.DictReader(
             (run_dir / "benchmark_metrics.csv").open(newline="", encoding="utf-8")
         )
     )
-    assert len(rows) == 8
+    assert len(rows) == 6
     assert {row["split"] for row in rows} == {"train", "validation"}
     assert {row["benchmark"] for row in rows} == {
         "random",
         "rule_based",
-        "lsmc",
         "perfect_foresight",
     }
+
+
+def test_main_can_include_lsmc_baseline(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """LSMC is fitted, evaluated, and stored only when requested."""
+    config = _config(tmp_path)
+    monkeypatch.setattr(run_benchmarks, "load_config", lambda _: config)
+    monkeypatch.setattr(run_benchmarks, "build_environment", lambda _: _environment())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_benchmarks",
+            "--config",
+            "configs/debug.yaml",
+            "--split",
+            "validation",
+            "--include-lsmc",
+        ],
+    )
+
+    run_benchmarks.main()
+
+    run_dir = next((tmp_path / "runs" / "benchmarks").iterdir())
+    assert (run_dir / "lsmc_policy.pkl").exists()
+
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["includes_lsmc"] is True
+
+    payload = json.loads(
+        (run_dir / "benchmark_metrics_validation.json").read_text(encoding="utf-8")
+    )
+    assert list(payload["benchmarks"]) == [
+        "random",
+        "rule_based",
+        "lsmc",
+        "perfect_foresight",
+    ]
 
 
 def test_main_logs_test_only_when_explicit(
@@ -181,7 +221,7 @@ def test_main_logs_test_only_when_explicit(
             (run_dir / "benchmark_metrics.csv").open(newline="", encoding="utf-8")
         )
     )
-    assert len(rows) == 4
+    assert len(rows) == 3
     assert {row["split"] for row in rows} == {"test"}
 
 
@@ -212,7 +252,6 @@ def test_main_can_log_backtest_split(
     assert set(payload["benchmarks"]) == {
         "random",
         "rule_based",
-        "lsmc",
         "perfect_foresight",
     }
 
@@ -362,7 +401,7 @@ def test_main_can_evaluate_oracle_cloned_policy_on_validation_and_test(
             (run_dir / "benchmark_metrics.csv").open(newline="", encoding="utf-8")
         )
     )
-    assert len(rows) == 14
+    assert len(rows) == 11
     assert {
         row["split"]
         for row in rows
@@ -411,12 +450,11 @@ def test_main_writes_benchmark_evaluations_on_timeline(
     assert {row["method"] for row in rows} == {
         "random",
         "rule_based",
-        "lsmc",
         "perfect_foresight",
     }
     assert {row["split"] for row in rows} == {"validation"}
     assert all(row["is_baseline_reference"] == "True" for row in rows)
-    for method in {"random", "rule_based", "lsmc", "perfect_foresight"}:
+    for method in {"random", "rule_based", "perfect_foresight"}:
         assert {
             int(row["total_training_env_steps"])
             for row in rows
@@ -456,11 +494,10 @@ def test_main_writes_final_episode_metrics_when_requested(
             )
         )
     )
-    assert len(rows) == 8
+    assert len(rows) == 6
     assert {row["method"] for row in rows} == {
         "random",
         "rule_based",
-        "lsmc",
         "perfect_foresight",
     }
     assert {row["path_id"] for row in rows} == {"0", "1"}

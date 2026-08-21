@@ -106,7 +106,7 @@ normalized price and current inventory.
 
 ## Benchmarks
 
-Random policy samples uniformly from `[-1, 1]`. Rule-based policy uses training price quantiles with liquidation feasibility checks. LSMC fits continuation values backward on training paths using the discrete grid `[-1, 0, 1]`. Perfect foresight solves a deterministic linear program for each known path. The optional oracle-cloned policy trains a small observation-only neural policy on perfect-foresight actions from the `pretrain` and `train` splits, then reports the cloned policy only on `validation` and `test`.
+Random policy samples uniformly from `[-1, 1]`. Rule-based policy uses training price quantiles with liquidation feasibility checks. Perfect foresight solves a deterministic linear program for each known path. The optional LSMC baseline fits continuation values backward on training paths using the configured discrete action grid. The optional oracle-cloned policy trains a small observation-only neural policy on perfect-foresight actions from the `pretrain` and `train` splits, then reports the cloned policy only on `validation` and `test`.
 
 ## Perfect Foresight LP
 
@@ -131,7 +131,7 @@ The negative optimum is the full-information valuation upper bound.
 
 ## LSMC
 
-The MVP LSMC benchmark evaluates feasible actions on the grid `[-1, 0, 1]`, regresses continuation values with normalized storage, normalized price, time fraction, capacity information, and degree-two polynomial terms, then evaluates the fitted policy on validation or test paths.
+The optional LSMC benchmark evaluates feasible actions on the configured action grid, regresses continuation values with normalized storage, normalized price, time fraction, capacity information, and degree-two polynomial terms, then evaluates the fitted policy on requested benchmark splits when `--include-lsmc` is passed.
 
 ## Metrics
 
