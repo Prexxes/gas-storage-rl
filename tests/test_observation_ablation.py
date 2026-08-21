@@ -9,6 +9,7 @@ from gas_storage_rl.training.run_observation_ablation import (
     DEFAULT_OBSERVATION_FEATURES,
     build_frozen_observation_ablation_environments,
     run_observation_ablation,
+    run_standard_observation_ablation,
     solve_frozen_oracles,
 )
 
@@ -161,3 +162,115 @@ def test_observation_ablation_smoke_writes_artifacts(tmp_path, algorithm) -> Non
     assert (
         output_dir / "full" / algorithm / "seed_0" / "evaluations.csv"
     ).exists()
+
+
+def test_standard_observation_ablation_runs_groups_with_masks(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Standard ablations forward observation masks to normal group runs."""
+    config = make_config()
+    config["logging_config"]["run_dir"] = str(tmp_path / "runs")
+    captured = []
+
+    def fake_run_experiment_group(config, config_name, algorithm, **kwargs):
+        captured.append(
+            {
+                "config": config,
+                "config_name": config_name,
+                "algorithm": algorithm,
+                "kwargs": kwargs,
+            }
+        )
+        return {
+            "group_dir": str(tmp_path / config_name),
+            "completed_runs": 2,
+            "skipped_runs": 0,
+            "failed_runs": 0,
+        }
+
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_observation_ablation.run_experiment_group",
+        fake_run_experiment_group,
+    )
+
+    summary = run_standard_observation_ablation(
+        config,
+        "ou_c200",
+        ["ppo"],
+        variants=["full", "no_price"],
+        seed_indices=[100, 101],
+    )
+
+    assert summary["failed_runs"] == 0
+    assert summary["completed_runs"] == 4
+    assert len(captured) == 2
+    assert captured[0]["config_name"] == "ou_c200-full"
+    assert captured[1]["config_name"] == "ou_c200-no_price"
+    assert captured[0]["kwargs"]["seed_indices"] == [100, 101]
+    assert captured[0]["config"]["environment_config"]["observation_features"] == {
+        **DEFAULT_OBSERVATION_FEATURES,
+    }
+    assert captured[1]["config"]["environment_config"]["observation_features"] == {
+        **DEFAULT_OBSERVATION_FEATURES,
+        "price": False,
+    }
+    assert (tmp_path / "runs" / "observation_ablations").exists()
+
+
+def test_standard_observation_ablation_can_transfer_hpo_best_config(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """HPO best settings are transferred before variant group execution."""
+    config = make_config()
+    config["environment_config"]["capacity"] = 200.0
+    config["environment_config"]["reward_scale"] = 2.0
+    config["logging_config"]["run_dir"] = str(tmp_path / "runs")
+    best_config = {
+        "environment_config": {"reward_scale": 8.0},
+        "agent_config": {
+            "ppo": {
+                "policy": "MlpPolicy",
+                "device": "cpu",
+                "learning_rate": 0.0001,
+            },
+        },
+    }
+    captured = {}
+
+    def fake_run_experiment_group(config, config_name, algorithm, **kwargs):
+        del kwargs
+        captured["config"] = config
+        captured["config_name"] = config_name
+        captured["algorithm"] = algorithm
+        return {
+            "group_dir": str(tmp_path / config_name),
+            "completed_runs": 1,
+            "skipped_runs": 0,
+            "failed_runs": 0,
+        }
+
+    monkeypatch.setattr(
+        "gas_storage_rl.training.run_observation_ablation.run_experiment_group",
+        fake_run_experiment_group,
+    )
+
+    summary = run_standard_observation_ablation(
+        config,
+        "ou_c200",
+        ["ppo"],
+        variants=["no_price"],
+        best_config=best_config,
+    )
+
+    assert summary["failed_runs"] == 0
+    assert captured["config_name"] == "ou_c200-no_price-hpo-transfer"
+    assert captured["algorithm"] == "ppo"
+    assert captured["config"]["environment_config"]["capacity"] == 200.0
+    assert captured["config"]["environment_config"]["reward_scale"] == 8.0
+    assert captured["config"]["environment_config"]["observation_features"] == {
+        **DEFAULT_OBSERVATION_FEATURES,
+        "price": False,
+    }
+    assert captured["config"]["agent_config"]["ppo"]["learning_rate"] == 0.0001

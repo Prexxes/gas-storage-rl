@@ -258,6 +258,26 @@ PYTHONPATH=src python -m gas_storage_rl.training.run_best_config_transfer \
   --output-config runs/hpo/<study_id>/deterministic_c30_ppo_transfer.yaml
 ```
 
+Observation ablations can also be run as normal experiment groups. The selected
+environment, dataset, training schedule, and evaluation protocol come from the
+target config; each ablation variant only changes
+`environment_config.observation_features`. To run the default feature variants
+on `ou_c200` with HPO-selected settings:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.training.run_observation_ablation \
+  --mode standard \
+  --config configs/ou_c200.yaml \
+  --algorithms ppo \
+  --best-config runs/hpo/<study_id>/best_config.json \
+  --seed-indices 100 101 102 103 104 105 106 107
+```
+
+Use `--variants full no_price no_inventory` to run a subset. Standard ablation
+manifests are written under `runs/observation_ablations/`, while each variant
+and algorithm still produces a normal experiment group under
+`runs/experiment_groups/`.
+
 Those final runs use the validation split for learning curves/AULC and the test
 split for final holdout performance.
 

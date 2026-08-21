@@ -1,8 +1,9 @@
-"""Observation-feature ablation on a frozen deterministic storage benchmark."""
+"""Observation-feature ablation runners."""
 
 from __future__ import annotations
 
 import argparse
+import copy
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
@@ -20,6 +21,10 @@ from gas_storage_rl.envs.gas_storage_env import GasStorageEnv
 from gas_storage_rl.envs.storage_dynamics import StorageParams
 from gas_storage_rl.evaluation.evaluate import evaluate_policy_on_paths
 from gas_storage_rl.training.config import load_config
+from gas_storage_rl.training.run_best_config_transfer import (
+    transfer_best_agent_settings,
+)
+from gas_storage_rl.training.run_experiment_group import run_experiment_group
 from gas_storage_rl.training.run_overfit_check import (
     OverfitEvaluationCallback,
     SUPPORTED_ALGORITHMS,
@@ -89,6 +94,121 @@ DEFAULT_VARIANTS = {
         "target_inventory": True,
     },
 }
+
+
+def run_standard_observation_ablation(
+    config: dict[str, Any],
+    config_name: str,
+    algorithms: list[str],
+    *,
+    variants: list[str] | None = None,
+    best_config: dict[str, Any] | None = None,
+    n_seeds: int | None = None,
+    seed_indices: list[int] | None = None,
+    pretrained_policy: str | Path | None = None,
+    rerun: bool = False,
+    output_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Runs normal experiment groups for multiple observation-feature masks.
+
+    Each variant uses the selected base environment and dataset configuration.
+    Only ``environment_config.observation_features`` changes between variants.
+    When ``best_config`` is provided, HPO-selected agent settings and effective
+    reward scale are transferred before each group run.
+
+    Args:
+        config: Base experiment configuration dictionary.
+        config_name: Human-readable base configuration name.
+        algorithms: Algorithm names to run for each ablation variant.
+        variants: Optional subset of configured variant names.
+        best_config: Optional HPO ``best_config.json`` contents.
+        n_seeds: Number of seed repetitions.
+        seed_indices: Explicit seed repetition indices to run.
+        pretrained_policy: Optional pretrained policy checkpoint.
+        rerun: Whether to bypass completed-run reuse.
+        output_dir: Optional replacement for ``logging_config.run_dir``.
+
+    Returns:
+        Observation ablation group summary.
+
+    Raises:
+        ValueError: If an input value or configuration is invalid.
+
+    """
+    _validate_algorithms(algorithms)
+    if seed_indices is not None and n_seeds is not None:
+        raise ValueError("Pass either n_seeds or seed_indices, not both")
+    ablation_config = config.get("observation_ablation_config", {})
+    variant_definitions = _variant_definitions(ablation_config)
+    selected_variants = variants or list(variant_definitions)
+    unknown_variants = sorted(set(selected_variants) - set(variant_definitions))
+    if unknown_variants:
+        raise ValueError(f"Unknown variants: {', '.join(unknown_variants)}")
+
+    base_config = copy.deepcopy(config)
+    if output_dir is not None:
+        base_config.setdefault("logging_config", {})["run_dir"] = str(output_dir)
+    ablation_dir = _create_standard_ablation_dir(
+        base_config["logging_config"]["run_dir"],
+        config_name,
+    )
+    _write_json(
+        ablation_dir / "ablation_config.json",
+        {
+            "config_name": config_name,
+            "algorithms": algorithms,
+            "variants": {
+                variant: variant_definitions[variant]
+                for variant in selected_variants
+            },
+            "uses_hpo_best_config": best_config is not None,
+            "n_seeds": n_seeds,
+            "seed_indices": seed_indices,
+            "rerun": rerun,
+        },
+    )
+
+    rows = []
+    for variant in selected_variants:
+        observation_features = variant_definitions[variant]
+        for algorithm in algorithms:
+            run_config = _standard_ablation_run_config(
+                base_config,
+                observation_features,
+                algorithm,
+                best_config,
+            )
+            group_config_name = _standard_ablation_group_config_name(
+                config_name,
+                variant,
+                best_config is not None,
+            )
+            group_summary = run_experiment_group(
+                run_config,
+                group_config_name,
+                algorithm,
+                n_seeds=n_seeds,
+                seed_indices=seed_indices,
+                pretrained_policy=pretrained_policy,
+                rerun=rerun,
+            )
+            rows.append(
+                {
+                    "variant": variant,
+                    "algorithm": algorithm,
+                    "group_dir": group_summary["group_dir"],
+                    "completed_runs": int(group_summary["completed_runs"]),
+                    "skipped_runs": int(group_summary["skipped_runs"]),
+                    "failed_runs": int(group_summary["failed_runs"]),
+                }
+            )
+            _write_json(ablation_dir / "summary.json", _standard_summary(rows))
+            _write_csv(ablation_dir / "summary.csv", rows)
+
+    summary = _standard_summary(rows)
+    _write_json(ablation_dir / "summary.json", summary)
+    _write_csv(ablation_dir / "summary.csv", rows)
+    return {"ablation_dir": str(ablation_dir), **summary}
 
 
 def build_frozen_observation_ablation_environments(
@@ -395,6 +515,116 @@ def _variant_definitions(
     }
 
 
+def _standard_ablation_run_config(
+    base_config: dict[str, Any],
+    observation_features: dict[str, bool],
+    algorithm: str,
+    best_config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Builds one normal-run config for an observation variant.
+
+    Args:
+        base_config: Base experiment configuration.
+        observation_features: Complete observation feature mask.
+        algorithm: Algorithm name to run.
+        best_config: Optional HPO ``best_config.json`` contents.
+
+    Returns:
+        Deep-copied run configuration.
+
+    """
+    run_config = copy.deepcopy(base_config)
+    run_config.setdefault("environment_config", {})["observation_features"] = dict(
+        observation_features
+    )
+    if best_config is not None:
+        run_config = transfer_best_agent_settings(
+            best_config,
+            run_config,
+            algorithm,
+        )
+    else:
+        run_config.setdefault("agent_config", {})["algorithm_name"] = algorithm
+    return run_config
+
+
+def _standard_ablation_group_config_name(
+    config_name: str,
+    variant: str,
+    uses_best_config: bool,
+) -> str:
+    """Returns a readable experiment-group config name.
+
+    Args:
+        config_name: Base configuration name.
+        variant: Observation ablation variant name.
+        uses_best_config: Whether HPO-selected settings are used.
+
+    Returns:
+        Group config name.
+
+    """
+    suffix = "-hpo-transfer" if uses_best_config else ""
+    return f"{config_name}-{variant}{suffix}"
+
+
+def _create_standard_ablation_dir(
+    run_dir: str | Path,
+    config_name: str,
+) -> Path:
+    """Creates a timestamped manifest directory for standard ablations.
+
+    Args:
+        run_dir: Base run directory from the experiment config.
+        config_name: Human-readable base configuration name.
+
+    Returns:
+        Newly created ablation manifest directory.
+
+    """
+    base = Path(run_dir) / "observation_ablations"
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    output = base / f"{timestamp}-{config_name}"
+    suffix = 1
+    while output.exists():
+        output = base / f"{timestamp}-{config_name}-{suffix}"
+        suffix += 1
+    output.mkdir(parents=True)
+    return output
+
+
+def _standard_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregates standard ablation group summaries.
+
+    Args:
+        rows: One row per variant and algorithm group.
+
+    Returns:
+        Summary dictionary.
+
+    """
+    return {
+        "completed_runs": sum(int(row["completed_runs"]) for row in rows),
+        "skipped_runs": sum(int(row["skipped_runs"]) for row in rows),
+        "failed_runs": sum(int(row["failed_runs"]) for row in rows),
+        "groups": rows,
+    }
+
+
+def _load_best_config(path: str | Path) -> dict[str, Any]:
+    """Loads an HPO best-config JSON file.
+
+    Args:
+        path: Filesystem path to ``best_config.json``.
+
+    Returns:
+        Parsed configuration dictionary.
+
+    """
+    with Path(path).open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
 def _mean_terminal_feasibility_clipped_actions(
     trajectories: list[dict[str, Any]],
 ) -> float:
@@ -543,6 +773,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/sanity_observation_ablation.yaml")
     parser.add_argument(
+        "--mode",
+        choices=["frozen", "standard"],
+        default="frozen",
+        help=(
+            "frozen runs the deterministic diagnostic; standard runs normal "
+            "experiment groups for each observation variant."
+        ),
+    )
+    parser.add_argument(
         "--algorithms",
         nargs="+",
         choices=SUPPORTED_ALGORITHMS,
@@ -551,18 +790,50 @@ def main() -> None:
     parser.add_argument("--variants", nargs="+")
     parser.add_argument("--total-timesteps", type=int)
     parser.add_argument("--n-seeds", type=int)
+    parser.add_argument("--seed-indices", type=int, nargs="+")
+    parser.add_argument("--best-config")
+    parser.add_argument("--pretrained-policy")
+    parser.add_argument(
+        "--rerun",
+        action="store_true",
+        help="Run seeds even if completed runs with the same effective configs exist.",
+    )
     parser.add_argument("--output-dir")
     args = parser.parse_args()
-    summary = run_observation_ablation(
-        load_config(args.config),
-        args.algorithms,
-        variants=args.variants,
-        total_timesteps=args.total_timesteps,
-        n_seeds=args.n_seeds,
-        output_dir=args.output_dir,
-    )
+    config_path = Path(args.config)
+    config = load_config(config_path)
+    if args.mode == "standard":
+        if args.total_timesteps is not None:
+            config["training_config"]["total_timesteps"] = int(args.total_timesteps)
+        summary = run_standard_observation_ablation(
+            config,
+            config_path.stem,
+            args.algorithms,
+            variants=args.variants,
+            best_config=(
+                _load_best_config(args.best_config)
+                if args.best_config is not None
+                else None
+            ),
+            n_seeds=args.n_seeds,
+            seed_indices=args.seed_indices,
+            pretrained_policy=args.pretrained_policy,
+            rerun=args.rerun,
+            output_dir=args.output_dir,
+        )
+    else:
+        if args.best_config is not None or args.seed_indices is not None:
+            raise SystemExit("--best-config and --seed-indices require --mode standard")
+        summary = run_observation_ablation(
+            config,
+            args.algorithms,
+            variants=args.variants,
+            total_timesteps=args.total_timesteps,
+            n_seeds=args.n_seeds,
+            output_dir=args.output_dir,
+        )
     print(json.dumps(summary, indent=2))
-    if not summary["passed"]:
+    if summary.get("passed") is False or summary.get("failed_runs", 0):
         raise SystemExit(1)
 
 
