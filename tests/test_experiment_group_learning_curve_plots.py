@@ -55,10 +55,10 @@ def test_aggregate_experiment_group_learning_curve_uses_seed_iqm() -> None:
 
 
 def test_build_default_title_uses_environment_and_capacity() -> None:
-    """The German default title uses Umgebung and storage capacity."""
+    """The German default title uses the environment and storage capacity labels."""
     title = build_default_title(environment_label="OU", capacity="30")
 
-    assert title == "Lernkurven auf der OU-Umgebung mit Kapazität 30"
+    assert title == "Lernkurven auf dem OU-Environment mit Speicherkapazität 30"
 
 
 def test_deduplicate_seed_step_evaluations_keeps_last_row() -> None:
@@ -78,7 +78,7 @@ def test_deduplicate_seed_step_evaluations_keeps_last_row() -> None:
     assert aggregate[AGGREGATE_VALUE_COLUMN].tolist() == [4.0]
 
 
-def test_plot_uses_short_y_label_title_ci_and_benchmark_line() -> None:
+def test_plot_uses_labels_title_ci_and_benchmark_display_names() -> None:
     """Learning curve plot contains seed CI bands and optional benchmarks."""
     group_metrics = pd.DataFrame(
         {
@@ -90,24 +90,40 @@ def test_plot_uses_short_y_label_title_ci_and_benchmark_line() -> None:
     )
     benchmark_metrics = pd.DataFrame(
         {
-            "method": ["lsmc", "lsmc"],
-            "total_training_env_steps": [0, 10],
-            "mean_return_raw": [4.0, 4.0],
+            "method": [
+                "random",
+                "rule_based",
+                "perfect_foresight",
+                "oracle_cloned_policy",
+                "lsmc",
+            ],
+            "total_training_env_steps": [10, 10, 10, 10, 10],
+            "mean_return_raw": [1.0, 2.0, 8.0, 6.0, 4.0],
         }
     )
 
     figure = plot_experiment_group_learning_curves(
         group_metrics,
         benchmark_metrics=benchmark_metrics,
-        title="Lernkurven auf der OU-Umgebung mit Kapazität 30",
+        title="Lernkurven auf dem OU-Environment mit Speicherkapazität 30",
         n_bootstrap=200,
     )
     axis = figure.axes[0]
     labels = [text.get_text() for text in axis.get_legend().get_texts()]
 
+    assert axis.get_xlabel() == "Trainingsschritte"
     assert axis.get_ylabel() == DEFAULT_Y_LABEL
-    assert axis.get_title() == "Lernkurven auf der OU-Umgebung mit Kapazität 30"
-    assert labels == ["PPO", "lsmc"]
+    assert axis.get_title() == (
+        "Lernkurven auf dem OU-Environment mit Speicherkapazität 30"
+    )
+    assert labels == [
+        "PPO",
+        "Random Policy",
+        "Rule-based Policy",
+        "Perfect Foresight",
+        "Oracle-Cloned Policy",
+        "LSMC",
+    ]
     assert len(axis.collections) == 1
     assert axis.lines[1].get_linestyle() == BENCHMARK_LINESTYLE
     plt.close(figure)

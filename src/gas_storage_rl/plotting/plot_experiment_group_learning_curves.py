@@ -18,10 +18,17 @@ from gas_storage_rl.plotting.statistics import bootstrap_percentile_statistic_ci
 STEP_COLUMN = "total_training_env_steps"
 VALUE_COLUMN = "mean_return_raw"
 AGGREGATE_VALUE_COLUMN = "mean_return_raw_over_seed"
-DEFAULT_Y_LABEL = "Mittlerer Return über Seeds"
+DEFAULT_Y_LABEL = "Mittlerer operativer Return über Seeds"
 INTERQUARTILE_MEAN_Y_LABEL = "Interquartile Mean Return über Seeds"
 BENCHMARK_LINESTYLE = "--"
 SEED_AGGREGATES = {"mean", "interquartile_mean"}
+BENCHMARK_DISPLAY_LABELS = {
+    "random": "Random Policy",
+    "rule_based": "Rule-based Policy",
+    "perfect_foresight": "Perfect Foresight",
+    "oracle_cloned_policy": "Oracle-Cloned Policy",
+    "lsmc": "LSMC",
+}
 
 
 def main() -> None:
@@ -33,8 +40,14 @@ def main() -> None:
     parser.add_argument("--split", default="validation")
     parser.add_argument("--output-dir")
     parser.add_argument("--title")
-    parser.add_argument("--environment-label")
-    parser.add_argument("--capacity")
+    parser.add_argument(
+        "--environment-label",
+        help="Environment label for the default title.",
+    )
+    parser.add_argument(
+        "--capacity",
+        help="Storage capacity label for the default title.",
+    )
     parser.add_argument(
         "--seed-aggregate",
         choices=sorted(SEED_AGGREGATES),
@@ -138,7 +151,7 @@ def plot_experiment_group_learning_curves(
     if benchmark_metrics is not None and not benchmark_metrics.empty:
         _plot_benchmark_references(axis, benchmark_metrics)
 
-    axis.set_xlabel("Total environment steps")
+    axis.set_xlabel("Trainingsschritte")
     axis.set_ylabel(y_label or _default_y_label(seed_aggregate))
     if title:
         axis.set_title(title)
@@ -248,14 +261,19 @@ def build_default_title(
     """
     if environment_label and capacity:
         return (
-            f"Lernkurven auf der {environment_label}-Umgebung "
-            f"mit Kapazität {capacity}"
+            f"Lernkurven auf dem {environment_label}-Environment "
+            f"mit Speicherkapazität {capacity}"
         )
     if environment_label:
-        return f"Lernkurven auf der {environment_label}-Umgebung"
+        return f"Lernkurven auf dem {environment_label}-Environment"
     if capacity:
-        return f"Lernkurven der RL-Algorithmen mit Kapazität {capacity}"
+        return f"Lernkurven mit Speicherkapazität {capacity}"
     return "Lernkurven der RL-Algorithmen"
+
+
+def _benchmark_display_label(method: str) -> str:
+    """Returns the display label for known benchmark methods."""
+    return BENCHMARK_DISPLAY_LABELS.get(method, method)
 
 
 def deduplicate_seed_step_evaluations(seed_metrics: pd.DataFrame) -> pd.DataFrame:
@@ -324,7 +342,7 @@ def _plot_benchmark_references(
         axis.plot(
             group[STEP_COLUMN],
             group[VALUE_COLUMN],
-            label=str(method),
+            label=_benchmark_display_label(str(method)),
             linestyle=BENCHMARK_LINESTYLE,
             linewidth=1.8,
             alpha=0.85,

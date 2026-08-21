@@ -552,9 +552,11 @@ override them. Benchmarks are optional and are drawn as reference lines when
 `benchmark_evaluations.csv` is available. Each RL curve uses the per-seed
 `mean_return_raw` values from `evaluations.csv` and plots their stepwise mean as
 `mean_return_raw_over_seed` with 95% bootstrap percentile confidence intervals.
-The default y-axis label is `Mittlerer Return über Seeds`. With
+The default x-axis label is `Trainingsschritte`, and the default y-axis label is
+`Mittlerer operativer Return über Seeds`. With
 `--environment-label OU --capacity 30`, the default title is
-`Lernkurven auf der OU-Umgebung mit Kapazität 30`; pass `--title` to override it.
+`Lernkurven auf dem OU-Environment mit Speicherkapazität 30`; pass `--title` to
+override it.
 By default, seed values are averaged with `--seed-aggregate mean`. To plot the
 interquartile mean over seeds instead, use:
 
