@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any
@@ -22,16 +23,32 @@ STEP_COLUMN = "total_training_env_steps"
 VALUE_COLUMN = "mean_return_raw"
 
 
+@dataclass(frozen=True)
+class HpoLearningCurveGridPanel:
+    """Input data for one HPO learning-curve grid panel."""
+
+    algorithm_label: str
+    trial_seed_metrics: pd.DataFrame
+    comparison_seed_metrics: pd.DataFrame | None = None
+    ranking: pd.DataFrame | None = None
+
+
 def main() -> None:
     """Creates HPO learning curve plots."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--study-dir", required=True)
+    parser.add_argument("--study-dir")
+    parser.add_argument("--ppo-study-dir")
+    parser.add_argument("--sac-study-dir")
+    parser.add_argument("--td3-study-dir")
     parser.add_argument(
         "--mode",
         choices=["overview", "best_only"],
         default="overview",
     )
     parser.add_argument("--comparison-group-dir")
+    parser.add_argument("--ppo-comparison-group-dir")
+    parser.add_argument("--sac-comparison-group-dir")
+    parser.add_argument("--td3-comparison-group-dir")
     parser.add_argument("--split", default="validation")
     parser.add_argument("--output-dir")
     parser.add_argument("--title")
@@ -39,6 +56,18 @@ def main() -> None:
     parser.add_argument("--n-bootstrap", type=int, default=10_000)
     parser.add_argument("--random-seed", type=int, default=0)
     args = parser.parse_args()
+
+    if _has_grid_study_dirs(args):
+        _run_grid_plot(args, parser)
+        return
+
+    _run_single_plot(args, parser)
+
+
+def _run_single_plot(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Creates one HPO learning curve plot from parsed CLI arguments."""
+    if not args.study_dir:
+        parser.error("--study-dir is required unless all grid study dirs are passed")
 
     study_dir = Path(args.study_dir)
     output_dir = (
@@ -72,6 +101,37 @@ def main() -> None:
     print(f"Saved HPO learning curve plot to {output_dir.resolve()}")
 
 
+def _run_grid_plot(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Creates a 1x3 HPO learning-curve grid from parsed CLI arguments."""
+    study_dirs = _grid_study_dirs(args)
+    if len(study_dirs) != 3:
+        parser.error(
+            "--ppo-study-dir, --sac-study-dir, and --td3-study-dir must be "
+            "passed together for grid plots"
+        )
+
+    output_dir = (
+        Path(args.output_dir)
+        if args.output_dir
+        else study_dirs[0].parent / "plots" / "hpo_learning_curve_grid"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    figure = plot_hpo_learning_curve_grid(
+        _load_grid_panels(args),
+        mode=args.mode,
+        top_k=args.top_k,
+        n_bootstrap=args.n_bootstrap,
+        random_seed=args.random_seed,
+        title=args.title or "HPO-Lernkurven nach Algorithmus",
+    )
+    _save(
+        figure,
+        output_dir / f"hpo_learning_curves_grid_{args.mode}_{args.split}.png",
+    )
+    print(f"Saved HPO learning curve grid to {output_dir.resolve()}")
+
+
 def plot_hpo_learning_curves(
     trial_seed_metrics: pd.DataFrame,
     *,
@@ -101,55 +161,76 @@ def plot_hpo_learning_curves(
     Raises:
         ValueError: If the mode or input data are invalid.
     """
-    if mode not in {"overview", "best_only"}:
-        raise ValueError("mode must be 'overview' or 'best_only'")
-    if trial_seed_metrics.empty:
-        raise ValueError("trial_seed_metrics must not be empty")
-
-    aggregate = aggregate_learning_curves(trial_seed_metrics)
-    top_trial_ids = rank_trial_ids(aggregate, ranking)[: max(1, int(top_k))]
     figure, axis = plt.subplots(figsize=(9, 5))
-
-    if mode == "overview":
-        _plot_overview(axis, aggregate, top_trial_ids)
-    else:
-        _plot_best_only(
-            axis,
-            trial_seed_metrics,
-            top_trial_ids[0],
-            n_bootstrap=n_bootstrap,
-            random_seed=random_seed,
-        )
-
-    if comparison_seed_metrics is not None and not comparison_seed_metrics.empty:
-        comparison_aggregate = aggregate_comparison_learning_curve(
-            comparison_seed_metrics
-        )
-        if mode == "overview":
-            axis.plot(
-                comparison_aggregate[STEP_COLUMN],
-                comparison_aggregate[VALUE_COLUMN],
-                color="black",
-                linewidth=2.8,
-                label=COMPARISON_LABEL,
-                zorder=4,
-            )
-        else:
-            _plot_curve_with_ci(
-                axis,
-                comparison_seed_metrics,
-                label=COMPARISON_LABEL,
-                color="black",
-                n_bootstrap=n_bootstrap,
-                random_seed=random_seed + 10_000,
-            )
-
-    axis.set_xlabel("Total environment steps")
-    axis.set_ylabel("Mean raw return")
+    _plot_hpo_learning_curves_on_axis(
+        axis,
+        trial_seed_metrics,
+        mode=mode,
+        comparison_seed_metrics=comparison_seed_metrics,
+        ranking=ranking,
+        top_k=top_k,
+        n_bootstrap=n_bootstrap,
+        random_seed=random_seed,
+    )
+    axis.set_xlabel("Trainingsschritte")
+    axis.set_ylabel("Mittlerer operativer Return über Seeds")
     if title:
         axis.set_title(title)
     axis.grid(alpha=0.25)
     axis.legend(fontsize=8)
+    return figure
+
+
+def plot_hpo_learning_curve_grid(
+    panels: list[HpoLearningCurveGridPanel],
+    *,
+    mode: str = "overview",
+    top_k: int = 3,
+    n_bootstrap: int = 10_000,
+    random_seed: int = 0,
+    title: str | None = "HPO-Lernkurven nach Algorithmus",
+) -> plt.Figure:
+    """Plots a 1x3 grid for comparing PPO, SAC, and TD3 HPO phases.
+
+    Args:
+        panels: Three panel inputs in display order.
+        mode: Plot mode, either ``overview`` or ``best_only``.
+        top_k: Number of best HPO trials highlighted in overview mode.
+        n_bootstrap: Number of bootstrap samples for confidence bands.
+        random_seed: Seed used for deterministic confidence bands.
+        title: Optional figure title.
+
+    Returns:
+        Matplotlib figure.
+
+    Raises:
+        ValueError: If the grid does not receive exactly three panels.
+    """
+    if len(panels) != 3:
+        raise ValueError("Exactly three panels are required for the 1x3 grid")
+
+    figure, axes = plt.subplots(1, 3, figsize=(15, 4.8), sharex=True, sharey=True)
+    for panel_index, (axis, panel) in enumerate(zip(axes, panels)):
+        _plot_hpo_learning_curves_on_axis(
+            axis,
+            panel.trial_seed_metrics,
+            mode=mode,
+            comparison_seed_metrics=panel.comparison_seed_metrics,
+            ranking=panel.ranking,
+            top_k=top_k,
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed + panel_index * 100_000,
+        )
+        axis.set_title(panel.algorithm_label)
+        axis.set_xlabel("Trainingsschritte")
+        axis.grid(alpha=0.25)
+        axis.legend(fontsize=7)
+
+    axes[0].set_ylabel("Mittlerer operativer Return über Seeds")
+    if title:
+        figure.suptitle(title)
+    top = 0.88 if title else 0.98
+    figure.tight_layout(rect=(0.0, 0.0, 1.0, top))
     return figure
 
 
@@ -303,12 +384,103 @@ def rank_trial_ids(
     return [int(trial_id) for trial_id in final_rows["trial_id"]]
 
 
+def _has_grid_study_dirs(args: argparse.Namespace) -> bool:
+    """Returns whether any grid study directory was passed."""
+    return any(
+        getattr(args, name)
+        for name in ["ppo_study_dir", "sac_study_dir", "td3_study_dir"]
+    )
+
+
+def _grid_study_dirs(args: argparse.Namespace) -> list[Path]:
+    """Returns all configured grid study directories in panel order."""
+    values = [args.ppo_study_dir, args.sac_study_dir, args.td3_study_dir]
+    return [Path(value) for value in values if value]
+
+
+def _load_grid_panels(args: argparse.Namespace) -> list[HpoLearningCurveGridPanel]:
+    """Loads PPO, SAC, and TD3 HPO grid panel inputs from CLI arguments."""
+    panel_specs = [
+        ("PPO", Path(args.ppo_study_dir), args.ppo_comparison_group_dir),
+        ("SAC", Path(args.sac_study_dir), args.sac_comparison_group_dir),
+        ("TD3", Path(args.td3_study_dir), args.td3_comparison_group_dir),
+    ]
+    return [
+        HpoLearningCurveGridPanel(
+            algorithm_label=label,
+            trial_seed_metrics=load_hpo_seed_evaluations(study_dir, args.split),
+            comparison_seed_metrics=(
+                load_experiment_group_seed_evaluations(
+                    Path(comparison_group_dir),
+                    args.split,
+                )
+                if comparison_group_dir
+                else pd.DataFrame()
+            ),
+            ranking=load_hpo_trial_ranking(study_dir),
+        )
+        for label, study_dir, comparison_group_dir in panel_specs
+    ]
+
+
+def _plot_hpo_learning_curves_on_axis(
+    axis: plt.Axes,
+    trial_seed_metrics: pd.DataFrame,
+    *,
+    mode: str,
+    comparison_seed_metrics: pd.DataFrame | None,
+    ranking: pd.DataFrame | None,
+    top_k: int,
+    n_bootstrap: int,
+    random_seed: int,
+) -> None:
+    """Plots one HPO learning-curve panel on an existing axis."""
+    if mode not in {"overview", "best_only"}:
+        raise ValueError("mode must be 'overview' or 'best_only'")
+    if trial_seed_metrics.empty:
+        raise ValueError("trial_seed_metrics must not be empty")
+
+    aggregate = aggregate_learning_curves(trial_seed_metrics)
+    top_trial_ids = rank_trial_ids(aggregate, ranking)[: max(1, int(top_k))]
+    if mode == "overview":
+        _plot_overview(
+            axis,
+            aggregate,
+            trial_seed_metrics,
+            top_trial_ids,
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed,
+        )
+    else:
+        _plot_best_only(
+            axis,
+            trial_seed_metrics,
+            top_trial_ids[0],
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed,
+        )
+
+    if comparison_seed_metrics is not None and not comparison_seed_metrics.empty:
+        _plot_curve_with_ci(
+            axis,
+            comparison_seed_metrics,
+            label=COMPARISON_LABEL,
+            color="black",
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed + 10_000,
+        )
+
+
 def _plot_overview(
     axis: plt.Axes,
     aggregate: pd.DataFrame,
+    seed_metrics: pd.DataFrame,
     top_trial_ids: list[int],
+    *,
+    n_bootstrap: int,
+    random_seed: int,
 ) -> None:
-    """Plots all HPO curves lightly and highlights top trials."""
+    """Plots all HPO curves lightly and highlights top trials with CIs."""
     top_trial_ids = top_trial_ids[:3]
     for trial_id, group in aggregate.groupby("trial_id", sort=False):
         group = group.sort_values(STEP_COLUMN)
@@ -324,17 +496,24 @@ def _plot_overview(
         )
     highlighted_colors = ["tab:blue", "tab:orange", "tab:green"]
     for rank, trial_id in enumerate(top_trial_ids, start=1):
-        group = aggregate[aggregate["trial_id"] == trial_id].sort_values(STEP_COLUMN)
-        axis.plot(
-            group[STEP_COLUMN],
-            group[VALUE_COLUMN],
+        group = seed_metrics[seed_metrics["trial_id"] == trial_id]
+        _plot_curve_with_ci(
+            axis,
+            group,
             color=highlighted_colors[rank - 1],
-            linewidth=2.4,
             label=f"Top {rank}: Trial {trial_id}",
-            zorder=3,
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed + rank * 10_000,
         )
     if len(aggregate["trial_id"].unique()) > len(top_trial_ids):
-        axis.plot([], [], color="0.45", alpha=0.35, linewidth=1.2, label=HPO_OVERVIEW_LABEL)
+        axis.plot(
+            [],
+            [],
+            color="0.45",
+            alpha=0.35,
+            linewidth=1.2,
+            label=HPO_OVERVIEW_LABEL,
+        )
 
 
 def _plot_best_only(

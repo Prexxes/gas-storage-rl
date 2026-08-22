@@ -3,10 +3,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pytest
 
 from gas_storage_rl.plotting.plot_hpo_learning_curves import (
     COMPARISON_LABEL,
+    HpoLearningCurveGridPanel,
     aggregate_learning_curves,
+    plot_hpo_learning_curve_grid,
     plot_hpo_learning_curves,
     rank_trial_ids,
 )
@@ -67,8 +70,8 @@ def test_hpo_ranking_prefers_objective_values() -> None:
     assert rank_trial_ids(aggregate, ranking) == [1, 0]
 
 
-def test_hpo_overview_labels_only_top_three_and_sb3_default() -> None:
-    """Overview keeps the legend compact and labels the comparison group."""
+def test_hpo_overview_adds_bands_for_top_three_and_sb3_default() -> None:
+    """Overview adds confidence bands while keeping the legend compact."""
     trial_metrics = _trial_metrics(n_trials=4)
     comparison_metrics = _comparison_metrics()
     ranking = pd.DataFrame(
@@ -84,7 +87,8 @@ def test_hpo_overview_labels_only_top_three_and_sb3_default() -> None:
         comparison_seed_metrics=comparison_metrics,
         ranking=ranking,
     )
-    labels = [text.get_text() for text in figure.axes[0].get_legend().get_texts()]
+    axis = figure.axes[0]
+    labels = [text.get_text() for text in axis.get_legend().get_texts()]
 
     assert labels == [
         "Top 1: Trial 0",
@@ -93,6 +97,7 @@ def test_hpo_overview_labels_only_top_three_and_sb3_default() -> None:
         "HPO trials",
         COMPARISON_LABEL,
     ]
+    assert len(axis.collections) == 4
     plt.close(figure)
 
 
@@ -130,7 +135,53 @@ def test_hpo_learning_curve_accepts_optional_title() -> None:
     )
 
     assert figure.axes[0].get_title() == "SAC HPO learning curves"
+    assert figure.axes[0].get_xlabel() == "Trainingsschritte"
+    assert figure.axes[0].get_ylabel() == "Mittlerer operativer Return über Seeds"
     plt.close(figure)
+
+
+def test_hpo_learning_curve_grid_compares_three_algorithms() -> None:
+    """Grid plots PPO, SAC, and TD3 HPO phases side by side."""
+    ranking = pd.DataFrame(
+        {
+            "trial_id": [0, 1, 2, 3],
+            "objective_mean_validation_return_raw": [40.0, 30.0, 20.0, 10.0],
+        }
+    )
+    panels = [
+        HpoLearningCurveGridPanel(
+            algorithm_label=label,
+            trial_seed_metrics=_trial_metrics(n_trials=4),
+            comparison_seed_metrics=_comparison_metrics(),
+            ranking=ranking,
+        )
+        for label in ["PPO", "SAC", "TD3"]
+    ]
+
+    figure = plot_hpo_learning_curve_grid(panels, n_bootstrap=200)
+
+    assert [axis.get_title() for axis in figure.axes] == ["PPO", "SAC", "TD3"]
+    assert [axis.get_xlabel() for axis in figure.axes] == [
+        "Trainingsschritte",
+        "Trainingsschritte",
+        "Trainingsschritte",
+    ]
+    assert figure.axes[0].get_ylabel() == "Mittlerer operativer Return über Seeds"
+    assert [len(axis.collections) for axis in figure.axes] == [4, 4, 4]
+    plt.close(figure)
+
+
+def test_hpo_learning_curve_grid_requires_three_panels() -> None:
+    """The algorithm comparison grid has a fixed 1x3 layout."""
+    panels = [
+        HpoLearningCurveGridPanel(
+            algorithm_label="PPO",
+            trial_seed_metrics=_trial_metrics(n_trials=1),
+        )
+    ]
+
+    with pytest.raises(ValueError, match="Exactly three panels"):
+        plot_hpo_learning_curve_grid(panels)
 
 
 def _trial_metrics(n_trials: int) -> pd.DataFrame:

@@ -621,9 +621,26 @@ PYTHONPATH=src python -m gas_storage_rl.plotting.plot_hpo_learning_curves \
 ```
 
 `overview` draws all HPO trials as faint curves, highlights the top 3 trials by
-the HPO objective, and labels the optional comparison group as `SB3 default`.
+the HPO objective with 95% bootstrap percentile confidence intervals, and labels
+the optional comparison group as `SB3 default` with the same confidence interval.
 `best_only` plots only the best HPO trial and the optional comparison group, both
 aggregated over seeds with 95% bootstrap percentile confidence intervals.
+
+Create a 1x3 HPO learning curve grid to compare the HPO phases for PPO, SAC, and
+TD3 side by side:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_hpo_learning_curves \
+  --ppo-study-dir runs/hpo/<ppo_study_id> \
+  --sac-study-dir runs/hpo/<sac_study_id> \
+  --td3-study-dir runs/hpo/<td3_study_id> \
+  --ppo-comparison-group-dir runs/experiment_groups/<ppo_sb3_default_group_id> \
+  --sac-comparison-group-dir runs/experiment_groups/<sac_sb3_default_group_id> \
+  --td3-comparison-group-dir runs/experiment_groups/<td3_sb3_default_group_id> \
+  --mode overview \
+  --split validation \
+  --title "HPO-Lernkurven nach Algorithmus"
+```
 
 Create an on-demand policy diagnostic plot for one fixed path without logging all
 step-level validation trajectories:
