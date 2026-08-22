@@ -13,10 +13,12 @@ from gas_storage_rl.plotting.plot_experiment_group_learning_curves import (
     BENCHMARK_LINESTYLE,
     DEFAULT_Y_LABEL,
     INTERQUARTILE_MEAN_Y_LABEL,
+    LearningCurveGridPanel,
     aggregate_experiment_group_learning_curve,
     build_default_title,
     deduplicate_seed_step_evaluations,
     load_experiment_group_learning_curves,
+    plot_experiment_group_learning_curve_grid,
     plot_experiment_group_learning_curves,
 )
 
@@ -152,6 +154,69 @@ def test_plot_iqm_uses_matching_y_label_and_curve_statistic() -> None:
     plt.close(figure)
 
 
+def test_grid_plot_uses_fixed_layout_and_single_shared_legend() -> None:
+    """The 2x2 grid orders panels by environment and storage capacity."""
+    panels = [
+        _grid_panel("Deterministic", "200"),
+        _grid_panel("OU", "200"),
+        _grid_panel("Deterministic", "30"),
+        _grid_panel("OU", "30"),
+    ]
+
+    figure = plot_experiment_group_learning_curve_grid(
+        panels,
+        n_bootstrap=200,
+    )
+    axes = figure.axes
+    legend_labels = [
+        text.get_text() for text in figure.legends[0].get_texts()
+    ]
+
+    assert [axis.get_title() for axis in axes] == [
+        "Deterministic, Speicherkapazität 200",
+        "OU, Speicherkapazität 200",
+        "Deterministic, Speicherkapazität 30",
+        "OU, Speicherkapazität 30",
+    ]
+    assert all(axis.get_legend() is None for axis in axes)
+    assert len(figure.legends) == 1
+    assert legend_labels == ["PPO", "LSMC"]
+    assert figure._supxlabel.get_text() == "Trainingsschritte"
+    assert figure._supylabel.get_text() == DEFAULT_Y_LABEL
+    plt.close(figure)
+
+
+def test_grid_plot_shares_y_axis_by_row_by_default() -> None:
+    """Grid plots use one y-axis scale per capacity row by default."""
+    panels = [
+        _grid_panel("Deterministic", "200", mean_returns=[210.0, 225.0]),
+        _grid_panel("OU", "200", mean_returns=[205.0, 220.0]),
+        _grid_panel("Deterministic", "30", mean_returns=[70.0, 85.0]),
+        _grid_panel("OU", "30", mean_returns=[65.0, 80.0]),
+    ]
+
+    figure = plot_experiment_group_learning_curve_grid(
+        panels,
+        n_bootstrap=200,
+    )
+    top_left, top_right, bottom_left, bottom_right = figure.axes
+
+    assert top_left.get_ylim() == top_right.get_ylim()
+    assert bottom_left.get_ylim() == bottom_right.get_ylim()
+    assert top_left.get_ylim() != bottom_left.get_ylim()
+    plt.close(figure)
+
+
+def test_grid_plot_requires_exactly_four_panels() -> None:
+    """Grid plots validate their fixed 2x2 shape."""
+    try:
+        plot_experiment_group_learning_curve_grid([_grid_panel("OU", "30")])
+    except ValueError as error:
+        assert "Exactly four panels" in str(error)
+    else:
+        raise AssertionError("Expected ValueError for invalid grid panel count")
+
+
 def test_load_experiment_group_learning_curves_reads_completed_seed_runs(
     tmp_path: Path,
 ) -> None:
@@ -232,6 +297,40 @@ def test_load_experiment_group_learning_curves_defaults_label_from_algorithm_nam
     )
 
     assert metrics["group_label"].tolist() == ["TD3"]
+
+
+def _grid_panel(
+    environment_label: str,
+    capacity: str,
+    *,
+    mean_returns: list[float] | None = None,
+) -> LearningCurveGridPanel:
+    """Creates a small grid panel fixture."""
+    returns = mean_returns or [3.0, 7.0]
+    return LearningCurveGridPanel(
+        environment_label=environment_label,
+        capacity=capacity,
+        group_metrics=pd.DataFrame(
+            {
+                "group_label": ["PPO", "PPO", "PPO", "PPO"],
+                "seed_index": [0, 0, 1, 1],
+                "total_training_env_steps": [0, 10, 0, 10],
+                "mean_return_raw": [
+                    returns[0],
+                    returns[1],
+                    returns[0],
+                    returns[1],
+                ],
+            }
+        ),
+        benchmark_metrics=pd.DataFrame(
+            {
+                "method": ["lsmc", "lsmc"],
+                "total_training_env_steps": [0, 10],
+                "mean_return_raw": [4.0, 4.0],
+            }
+        ),
+    )
 
 
 def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:

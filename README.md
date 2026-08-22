@@ -572,6 +572,43 @@ PYTHONPATH=src python -m gas_storage_rl.plotting.plot_experiment_group_learning_
 The IQM curve and its bootstrap confidence interval are both computed from the
 same interquartile-mean statistic over seed-level `mean_return_raw` values.
 
+Create a fixed 2x2 learning-curve grid across deterministic and OU environments
+with storage capacities 200 and 30:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.plotting.plot_experiment_group_learning_curves \
+  --grid \
+  --deterministic-c200-experiment-group-dir runs/experiment_groups/<det_c200_ppo_group_id> \
+  --deterministic-c200-experiment-group-dir runs/experiment_groups/<det_c200_sac_group_id> \
+  --deterministic-c200-experiment-group-dir runs/experiment_groups/<det_c200_td3_group_id> \
+  --deterministic-c200-benchmark-run-dir runs/benchmarks/<det_c200_benchmark_run_id> \
+  --ou-c200-experiment-group-dir runs/experiment_groups/<ou_c200_ppo_group_id> \
+  --ou-c200-experiment-group-dir runs/experiment_groups/<ou_c200_sac_group_id> \
+  --ou-c200-experiment-group-dir runs/experiment_groups/<ou_c200_td3_group_id> \
+  --ou-c200-benchmark-run-dir runs/benchmarks/<ou_c200_benchmark_run_id> \
+  --deterministic-c30-experiment-group-dir runs/experiment_groups/<det_c30_ppo_group_id> \
+  --deterministic-c30-experiment-group-dir runs/experiment_groups/<det_c30_sac_group_id> \
+  --deterministic-c30-experiment-group-dir runs/experiment_groups/<det_c30_td3_group_id> \
+  --deterministic-c30-benchmark-run-dir runs/benchmarks/<det_c30_benchmark_run_id> \
+  --ou-c30-experiment-group-dir runs/experiment_groups/<ou_c30_ppo_group_id> \
+  --ou-c30-experiment-group-dir runs/experiment_groups/<ou_c30_sac_group_id> \
+  --ou-c30-experiment-group-dir runs/experiment_groups/<ou_c30_td3_group_id> \
+  --ou-c30-benchmark-run-dir runs/benchmarks/<ou_c30_benchmark_run_id> \
+  --group-label PPO \
+  --group-label SAC \
+  --group-label TD3 \
+  --split validation
+```
+
+The grid layout is fixed as deterministic environments in the left column, OU
+environments in the right column, capacity 200 in the top row, and capacity 30 in
+the bottom row. The figure uses one shared legend for all four panels. By default,
+`--y-axis-scale row` gives the upper and lower rows separate y-axis scales while
+keeping both panels within each row comparable. Use `--y-axis-scale all` for one
+scale across all four panels, or `--y-axis-scale none` for independent panel
+scales. The legacy shortcuts `--share-y` and `--no-share-y` map to `all` and
+`none`.
+
 Create seed-aggregated HPO learning curve plots:
 
 ```bash

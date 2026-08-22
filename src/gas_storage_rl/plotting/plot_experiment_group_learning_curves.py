@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
@@ -22,6 +24,7 @@ DEFAULT_Y_LABEL = "Mittlerer operativer Return über Seeds"
 INTERQUARTILE_MEAN_Y_LABEL = "Interquartile Mean Return über Seeds"
 BENCHMARK_LINESTYLE = "--"
 SEED_AGGREGATES = {"mean", "interquartile_mean"}
+Y_AXIS_SCALE_MODES = {"all", "none", "row"}
 BENCHMARK_DISPLAY_LABELS = {
     "random": "Random Policy",
     "rule_based": "Rule-based Policy",
@@ -29,17 +32,40 @@ BENCHMARK_DISPLAY_LABELS = {
     "oracle_cloned_policy": "Oracle-Cloned Policy",
     "lsmc": "LSMC",
 }
+GRID_DEFAULT_TITLE = "Lernkurven nach Environment und Speicherkapazität"
+GRID_PANEL_SPECS = (
+    ("deterministic_c200", "deterministic-c200", "Deterministic", "200"),
+    ("ou_c200", "ou-c200", "OU", "200"),
+    ("deterministic_c30", "deterministic-c30", "Deterministic", "30"),
+    ("ou_c30", "ou-c30", "OU", "30"),
+)
+
+
+@dataclass(frozen=True)
+class LearningCurveGridPanel:
+    """Input data and labels for one learning-curve grid panel."""
+
+    environment_label: str
+    capacity: str
+    group_metrics: pd.DataFrame
+    benchmark_metrics: pd.DataFrame | None = None
+    title: str | None = None
 
 
 def main() -> None:
     """Creates seed-aggregated experiment-group learning curve plots."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--experiment-group-dir", action="append", required=True)
+    parser.add_argument("--experiment-group-dir", action="append", default=[])
     parser.add_argument("--group-label", action="append", default=[])
     parser.add_argument("--benchmark-run-dir")
     parser.add_argument("--split", default="validation")
     parser.add_argument("--output-dir")
     parser.add_argument("--title")
+    parser.add_argument(
+        "--grid",
+        action="store_true",
+        help="Create the fixed 2x2 Deterministic/OU and C=200/C=30 grid.",
+    )
     parser.add_argument(
         "--environment-label",
         help="Environment label for the default title.",
@@ -56,8 +82,37 @@ def main() -> None:
     parser.add_argument("--y-label")
     parser.add_argument("--n-bootstrap", type=int, default=10_000)
     parser.add_argument("--random-seed", type=int, default=0)
+    parser.add_argument(
+        "--share-y",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Deprecated grid y-axis shortcut. --share-y uses one shared scale; "
+            "--no-share-y uses independent panel scales."
+        ),
+    )
+    parser.add_argument(
+        "--y-axis-scale",
+        choices=sorted(Y_AXIS_SCALE_MODES),
+        default="row",
+        help=(
+            "Grid y-axis scaling: row shares one scale per row, all shares one "
+            "scale for all panels, none uses independent panel scales."
+        ),
+    )
+    _add_grid_panel_arguments(parser)
     args = parser.parse_args()
 
+    if args.grid or _has_grid_panel_args(args):
+        _run_grid_plot(args)
+        return
+    _run_single_plot(args)
+
+
+def _run_single_plot(args: argparse.Namespace) -> None:
+    """Creates the existing single-panel learning-curve plot."""
+    if not args.experiment_group_dir:
+        raise ValueError("--experiment-group-dir is required for single-panel plots")
     group_dirs = [Path(group_dir) for group_dir in args.experiment_group_dir]
     if args.group_label and len(args.group_label) != len(group_dirs):
         raise ValueError("--group-label must be passed once per experiment group")
@@ -101,6 +156,37 @@ def main() -> None:
     print(f"Saved experiment-group learning curve plot to {output_dir.resolve()}")
 
 
+def _run_grid_plot(args: argparse.Namespace) -> None:
+    """Creates the fixed 2x2 learning-curve grid plot."""
+    panels = _load_grid_panels(args)
+    first_group_dirs = _grid_panel_group_dirs(args, GRID_PANEL_SPECS[0][0])
+    output_dir = (
+        Path(args.output_dir)
+        if args.output_dir
+        else first_group_dirs[0] / "plots" / "experiment_group_learning_curves"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    figure = plot_experiment_group_learning_curve_grid(
+        panels,
+        title=args.title or GRID_DEFAULT_TITLE,
+        n_bootstrap=args.n_bootstrap,
+        random_seed=args.random_seed,
+        seed_aggregate=args.seed_aggregate,
+        y_label=args.y_label,
+        y_axis_scale=_resolve_y_axis_scale(args),
+    )
+    output_path = (
+        output_dir
+        / (
+            "learning_curves_experiment_group_grid_"
+            f"{args.split}_{args.seed_aggregate}.png"
+        )
+    )
+    _save(figure, output_path, tight_layout=False)
+    print(f"Saved experiment-group learning curve grid to {output_dir.resolve()}")
+
+
 def plot_experiment_group_learning_curves(
     group_metrics: pd.DataFrame,
     *,
@@ -128,29 +214,17 @@ def plot_experiment_group_learning_curves(
     Raises:
         ValueError: If required input data are missing.
     """
-    if group_metrics.empty:
-        raise ValueError("group_metrics must not be empty")
-    _require_columns(group_metrics, {"group_label", STEP_COLUMN, VALUE_COLUMN})
     _validate_seed_aggregate(seed_aggregate)
 
     figure, axis = plt.subplots(figsize=(9, 5))
-    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    grouped_metrics = group_metrics.groupby("group_label", sort=False)
-    for offset, (label, group) in enumerate(grouped_metrics):
-        color = colors[offset % len(colors)]
-        _plot_group_curve_with_ci(
-            axis,
-            group,
-            label=str(label),
-            color=color,
-            n_bootstrap=n_bootstrap,
-            random_seed=random_seed + offset * 10_000,
-            seed_aggregate=seed_aggregate,
-        )
-
-    if benchmark_metrics is not None and not benchmark_metrics.empty:
-        _plot_benchmark_references(axis, benchmark_metrics)
-
+    _plot_learning_curves_on_axis(
+        axis,
+        group_metrics,
+        benchmark_metrics=benchmark_metrics,
+        n_bootstrap=n_bootstrap,
+        random_seed=random_seed,
+        seed_aggregate=seed_aggregate,
+    )
     axis.set_xlabel("Trainingsschritte")
     axis.set_ylabel(y_label or _default_y_label(seed_aggregate))
     if title:
@@ -158,6 +232,174 @@ def plot_experiment_group_learning_curves(
     axis.grid(alpha=0.25)
     axis.legend(fontsize=8)
     return figure
+
+
+def plot_experiment_group_learning_curve_grid(
+    panels: list[LearningCurveGridPanel],
+    *,
+    title: str | None = GRID_DEFAULT_TITLE,
+    n_bootstrap: int = 10_000,
+    random_seed: int = 0,
+    seed_aggregate: str = "mean",
+    y_label: str | None = None,
+    y_axis_scale: str | bool = "row",
+    share_y: bool | None = None,
+) -> plt.Figure:
+    """Plots a fixed 2x2 learning-curve grid with one shared legend.
+
+    The panel order is upper-left, upper-right, lower-left, lower-right.
+
+    Args:
+        panels: Four panel inputs in display order.
+        title: Optional figure title.
+        n_bootstrap: Number of bootstrap samples for confidence bands.
+        random_seed: Seed used for deterministic confidence bands.
+        seed_aggregate: Statistic used to aggregate seed values by step.
+        y_label: Optional shared y-axis label.
+        y_axis_scale: Y-axis scale sharing mode: ``row``, ``all``, or ``none``.
+            Boolean values are accepted for backward compatibility.
+        share_y: Deprecated boolean y-axis sharing override.
+
+    Returns:
+        Matplotlib figure.
+
+    Raises:
+        ValueError: If the grid does not receive exactly four panels.
+    """
+    if len(panels) != 4:
+        raise ValueError("Exactly four panels are required for the 2x2 grid")
+    _validate_seed_aggregate(seed_aggregate)
+    if share_y is not None:
+        y_axis_scale = share_y
+    share_y = _matplotlib_share_y_mode(y_axis_scale)
+
+    figure, axes = plt.subplots(
+        2,
+        2,
+        figsize=(14, 9),
+        sharex=True,
+        sharey=share_y,
+    )
+    for panel_index, (axis, panel) in enumerate(zip(axes.flat, panels)):
+        _plot_learning_curves_on_axis(
+            axis,
+            panel.group_metrics,
+            benchmark_metrics=panel.benchmark_metrics,
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed + panel_index * 100_000,
+            seed_aggregate=seed_aggregate,
+        )
+        axis.set_title(panel.title or build_panel_title(panel))
+        axis.grid(alpha=0.25)
+
+    handles, labels = _unique_legend_entries(axes.flat)
+    figure.supxlabel("Trainingsschritte", y=0.07)
+    figure.supylabel(y_label or _default_y_label(seed_aggregate), x=0.01)
+    if title:
+        figure.suptitle(title)
+    if handles:
+        figure.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.0),
+            ncol=min(len(labels), 5),
+            fontsize=8,
+        )
+    top = 0.94 if title else 0.98
+    figure.tight_layout(rect=(0.03, 0.12, 1.0, top))
+    return figure
+
+
+def build_panel_title(panel: LearningCurveGridPanel) -> str:
+    """Builds a concise title for one learning-curve grid panel."""
+    return f"{panel.environment_label}, Speicherkapazität {panel.capacity}"
+
+
+def _add_grid_panel_arguments(parser: argparse.ArgumentParser) -> None:
+    """Adds fixed 2x2 grid panel input arguments to the CLI parser."""
+    for dest_prefix, cli_prefix, environment_label, capacity in GRID_PANEL_SPECS:
+        panel_label = f"{environment_label} with storage capacity {capacity}"
+        parser.add_argument(
+            f"--{cli_prefix}-experiment-group-dir",
+            action="append",
+            default=[],
+            dest=f"{dest_prefix}_experiment_group_dir",
+            help=f"Experiment group directory for the {panel_label} panel.",
+        )
+        parser.add_argument(
+            f"--{cli_prefix}-benchmark-run-dir",
+            dest=f"{dest_prefix}_benchmark_run_dir",
+            help=f"Benchmark run directory for the {panel_label} panel.",
+        )
+
+
+def _has_grid_panel_args(args: argparse.Namespace) -> bool:
+    """Returns whether any fixed-grid panel input was passed."""
+    for dest_prefix, _, _, _ in GRID_PANEL_SPECS:
+        if _grid_panel_group_dirs(args, dest_prefix):
+            return True
+        if getattr(args, f"{dest_prefix}_benchmark_run_dir"):
+            return True
+    return False
+
+
+def _resolve_y_axis_scale(args: argparse.Namespace) -> str:
+    """Resolves the grid y-axis sharing mode from current and legacy CLI flags."""
+    if args.share_y is True:
+        return "all"
+    if args.share_y is False:
+        return "none"
+    return args.y_axis_scale
+
+
+def _load_grid_panels(args: argparse.Namespace) -> list[LearningCurveGridPanel]:
+    """Loads all fixed-grid panels from CLI arguments."""
+    panels = []
+    for dest_prefix, _, environment_label, capacity in GRID_PANEL_SPECS:
+        group_dirs = _grid_panel_group_dirs(args, dest_prefix)
+        if not group_dirs:
+            raise ValueError(
+                f"--{dest_prefix.replace('_', '-')}-experiment-group-dir is "
+                "required for grid plots"
+            )
+        if args.group_label and len(args.group_label) != len(group_dirs):
+            raise ValueError(
+                "--group-label must be passed once per experiment group in "
+                "each grid panel"
+            )
+        benchmark_run_dir = getattr(args, f"{dest_prefix}_benchmark_run_dir")
+        panels.append(
+            LearningCurveGridPanel(
+                environment_label=environment_label,
+                capacity=capacity,
+                group_metrics=load_experiment_group_learning_curves(
+                    group_dirs,
+                    split=args.split,
+                    group_labels=args.group_label,
+                ),
+                benchmark_metrics=(
+                    load_benchmark_learning_curves(
+                        Path(benchmark_run_dir),
+                        args.split,
+                    )
+                    if benchmark_run_dir
+                    else pd.DataFrame()
+                ),
+            )
+        )
+    return panels
+
+
+def _grid_panel_group_dirs(
+    args: argparse.Namespace,
+    dest_prefix: str,
+) -> list[Path]:
+    """Returns configured experiment group directories for one grid panel."""
+    return [
+        Path(group_dir)
+        for group_dir in getattr(args, f"{dest_prefix}_experiment_group_dir")
+    ]
 
 
 def load_experiment_group_learning_curves(
@@ -291,6 +533,39 @@ def deduplicate_seed_step_evaluations(seed_metrics: pd.DataFrame) -> pd.DataFram
     return data.drop_duplicates(["seed_index", STEP_COLUMN], keep="last")
 
 
+def _plot_learning_curves_on_axis(
+    axis: plt.Axes,
+    group_metrics: pd.DataFrame,
+    *,
+    benchmark_metrics: pd.DataFrame | None,
+    n_bootstrap: int,
+    random_seed: int,
+    seed_aggregate: str,
+) -> None:
+    """Plots experiment-group curves and benchmark references on one axis."""
+    if group_metrics.empty:
+        raise ValueError("group_metrics must not be empty")
+    _require_columns(group_metrics, {"group_label", STEP_COLUMN, VALUE_COLUMN})
+    _validate_seed_aggregate(seed_aggregate)
+
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    grouped_metrics = group_metrics.groupby("group_label", sort=False)
+    for offset, (label, group) in enumerate(grouped_metrics):
+        color = colors[offset % len(colors)]
+        _plot_group_curve_with_ci(
+            axis,
+            group,
+            label=str(label),
+            color=color,
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed + offset * 10_000,
+            seed_aggregate=seed_aggregate,
+        )
+
+    if benchmark_metrics is not None and not benchmark_metrics.empty:
+        _plot_benchmark_references(axis, benchmark_metrics)
+
+
 def _plot_group_curve_with_ci(
     axis: plt.Axes,
     seed_metrics: pd.DataFrame,
@@ -347,6 +622,32 @@ def _plot_benchmark_references(
             linewidth=1.8,
             alpha=0.85,
         )
+
+
+def _unique_legend_entries(axes: Iterable[plt.Axes]) -> tuple[list[object], list[str]]:
+    """Returns first-seen legend handles and labels across axes."""
+    handles_by_label = {}
+    for axis in axes:
+        handles, labels = axis.get_legend_handles_labels()
+        for handle, label in zip(handles, labels):
+            if label not in handles_by_label:
+                handles_by_label[label] = handle
+    return list(handles_by_label.values()), list(handles_by_label.keys())
+
+
+def _matplotlib_share_y_mode(y_axis_scale: str | bool) -> bool | str:
+    """Converts a public y-axis scale mode into a Matplotlib sharey value."""
+    if y_axis_scale is True:
+        return True
+    if y_axis_scale is False:
+        return False
+    if y_axis_scale == "all":
+        return True
+    if y_axis_scale == "none":
+        return False
+    if y_axis_scale == "row":
+        return "row"
+    raise ValueError(f"y_axis_scale must be one of {sorted(Y_AXIS_SCALE_MODES)}")
 
 
 def _bootstrap_curve_intervals(
@@ -457,9 +758,10 @@ def _require_columns(frame: pd.DataFrame, columns: set[str]) -> None:
         raise ValueError(f"Missing required columns: {missing}")
 
 
-def _save(figure: plt.Figure, path: Path) -> None:
+def _save(figure: plt.Figure, path: Path, *, tight_layout: bool = True) -> None:
     """Saves and closes a Matplotlib figure."""
-    figure.tight_layout()
+    if tight_layout:
+        figure.tight_layout()
     figure.savefig(path, dpi=160)
     plt.close(figure)
 
