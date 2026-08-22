@@ -23,6 +23,13 @@ AGGREGATE_VALUE_COLUMN = "mean_return_raw_over_seed"
 DEFAULT_Y_LABEL = "Mittlerer operativer Return über Seeds"
 INTERQUARTILE_MEAN_Y_LABEL = "Interquartile Mean Return über Seeds"
 BENCHMARK_LINESTYLE = "--"
+BENCHMARK_COLORS = {
+    "random": "#7f7f7f",                # gray
+    "rule_based": "#8c564b",            # brown
+    "perfect_foresight": "#d62728",     # red
+    "oracle_cloned_policy": "#000000",  # black
+    "lsmc": "#9467bd",                  # purple
+}
 SEED_AGGREGATES = {"mean", "interquartile_mean"}
 Y_AXIS_SCALE_MODES = {"all", "none", "row"}
 BENCHMARK_DISPLAY_LABELS = {
@@ -230,7 +237,7 @@ def plot_experiment_group_learning_curves(
     if title:
         axis.set_title(title)
     axis.grid(alpha=0.25)
-    axis.legend(fontsize=8)
+    axis.legend(fontsize=8, handlelength = 5.0)
     return figure
 
 
@@ -305,6 +312,7 @@ def plot_experiment_group_learning_curve_grid(
             bbox_to_anchor=(0.5, 0.0),
             ncol=min(len(labels), 5),
             fontsize=8,
+            handlelength = 5.0,
         )
     top = 0.94 if title else 0.98
     figure.tight_layout(rect=(0.03, 0.12, 1.0, top))
@@ -614,10 +622,12 @@ def _plot_benchmark_references(
     _require_columns(benchmark_metrics, {"method", STEP_COLUMN, VALUE_COLUMN})
     for method, group in benchmark_metrics.groupby("method", sort=False):
         group = group.sort_values(STEP_COLUMN)
+        method_key = str(method)
         axis.plot(
             group[STEP_COLUMN],
             group[VALUE_COLUMN],
             label=_benchmark_display_label(str(method)),
+            color=BENCHMARK_COLORS.get(method_key, "0.35"),
             linestyle=BENCHMARK_LINESTYLE,
             linewidth=1.8,
             alpha=0.85,
