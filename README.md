@@ -327,6 +327,11 @@ Run manual holdout evaluation on the synthetic test split:
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_holdout_evaluation --run-dir runs/<run_id> --split test
 ```
 
+By default, holdout evaluation loads `best_validation_model.zip`. Pass
+`--model final` to evaluate `final_model.zip`, or
+`--model best_risk_adjusted_validation` to evaluate
+`best_risk_adjusted_validation_model.zip`.
+
 Write final per-episode RL metrics for comparison plots:
 
 ```bash
@@ -341,6 +346,32 @@ Run manual holdout evaluation on historical backtest windows:
 ```bash
 PYTHONPATH=src python -m gas_storage_rl.evaluation.run_holdout_evaluation --run-dir runs/<run_id> --split backtest
 ```
+
+Run holdout evaluation for every completed run in an experiment group:
+
+```bash
+PYTHONPATH=src python -m gas_storage_rl.evaluation.run_group_holdout_evaluation \
+  --group-dir runs/experiment_groups/<group_id> \
+  --split test
+```
+
+The group runner writes each experiment's `holdout_<split>_metrics.json` and
+`final_episode_metrics_<split>.csv`, then stores group-level artifacts in the
+experiment-group directory:
+
+- `holdout_<split>_runs.csv`: one row per seed/run with the run-level holdout
+  metrics.
+- `holdout_<split>_episode_metrics.csv`: all per-episode run metrics combined
+  across seeds, including `episode_perfect_foresight_return_raw`,
+  `episode_perfect_foresight_ratio`, and `episode_optimality_gap`.
+- `perfect_foresight_references_<split>.jsonl`: one perfect-foresight reference
+  trajectory per evaluated path, computed once for the group.
+- `holdout_<split>_summary.json`: seed-axis aggregates for run metrics,
+  including mean, median, standard deviation, minimum, maximum, interquartile
+  mean, and percentile-bootstrap confidence intervals for the IQM estimator.
+
+Per-episode metrics also split constrained actions into physical
+rate/capacity clipping and terminal-feasibility clipping counts.
 
 ## Run Benchmarks
 

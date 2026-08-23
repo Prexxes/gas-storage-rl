@@ -122,6 +122,21 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
     actions = np.array([info["executed_action"] for info in infos], dtype=np.float64)
     storage = np.array([info["storage_level"] for info in infos], dtype=np.float64)
     target_inventory = float(infos[-1].get("target_terminal_inventory", 0.0))
+    physical_clipped = np.array(
+        [
+            abs(
+                info["requested_action"]
+                - info.get("rate_capacity_clipped_action", info["requested_action"])
+            )
+            > 1e-8
+            for info in infos
+        ],
+        dtype=bool,
+    )
+    terminal_feasibility_clipped = np.array(
+        [bool(info.get("terminal_feasibility_clipped", False)) for info in infos],
+        dtype=bool,
+    )
     return {
         "episode_return_raw": float(np.sum(rewards)),
         "episode_return_scaled": float(np.sum(scaled_rewards)),
@@ -137,6 +152,19 @@ def summarize_episode_infos(infos: list[dict]) -> dict[str, float]:
                     for info in infos
                 ]
             )
+        ),
+        "number_of_physical_clipped_actions": float(np.sum(physical_clipped)),
+        "number_of_terminal_feasibility_clipped_actions": float(
+            np.sum(terminal_feasibility_clipped)
+        ),
+        "number_of_physical_only_clipped_actions": float(
+            np.sum(physical_clipped & ~terminal_feasibility_clipped)
+        ),
+        "number_of_terminal_only_clipped_actions": float(
+            np.sum(~physical_clipped & terminal_feasibility_clipped)
+        ),
+        "number_of_physical_and_terminal_clipped_actions": float(
+            np.sum(physical_clipped & terminal_feasibility_clipped)
         ),
         "total_injected_volume": float(np.sum(np.maximum(actions, 0.0))),
         "total_withdrawn_volume": float(-np.sum(np.minimum(actions, 0.0))),
@@ -187,6 +215,46 @@ def summarize_evaluation(
             np.mean(
                 [
                     item["number_of_constrained_actions"]
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_number_of_physical_clipped_actions": float(
+            np.mean(
+                [
+                    item.get("number_of_physical_clipped_actions", 0.0)
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_number_of_terminal_feasibility_clipped_actions": float(
+            np.mean(
+                [
+                    item.get("number_of_terminal_feasibility_clipped_actions", 0.0)
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_number_of_physical_only_clipped_actions": float(
+            np.mean(
+                [
+                    item.get("number_of_physical_only_clipped_actions", 0.0)
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_number_of_terminal_only_clipped_actions": float(
+            np.mean(
+                [
+                    item.get("number_of_terminal_only_clipped_actions", 0.0)
+                    for item in episode_summaries
+                ]
+            )
+        ),
+        "mean_number_of_physical_and_terminal_clipped_actions": float(
+            np.mean(
+                [
+                    item.get("number_of_physical_and_terminal_clipped_actions", 0.0)
                     for item in episode_summaries
                 ]
             )
